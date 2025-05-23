@@ -1,0 +1,13 @@
+[package]
+name = "stage4"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde.workspace = true
+indicatif.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+infer.workspace = true
+walkdir.workspace = true
+clap.workspace = true

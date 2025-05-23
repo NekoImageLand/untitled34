@@ -1,0 +1,12 @@
+[package]
+name = "stage3"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bincode.workspace = true
+serde-pickle.workspace = true
+uuid.workspace = true
+plotters.workspace = true
+serde.workspace = true
+shared = {path = "../shared"}

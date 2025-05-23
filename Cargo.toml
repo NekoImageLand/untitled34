@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = ["shared", "stage1", "stage2", "stage3", "stage4"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+bincode = { version = "2.0.1", features = ["serde"] }
+serde-pickle = "1.2.0"
+uuid = { version = "1.17.0", features = ["v4", "serde"] }
+indicatif = { version = "0.17.11", features = ["rayon"] }
+rayon = "1.10.0"
+qdrant-client = "1.14.0"
+tokio = { version = "1.45.0", features = ["rt", "rt-multi-thread", "macros"] }
+prost = "0.13.5"
+itertools = "0.14.0"
+plotters = "0.3.7"
+opendal = { version = "0.53.2", features = ["services-s3"] }
+serde_json = "1.0.140"
+infer = "0.19.0"
+walkdir = "2.5.0"
+anyhow = "1.0.98"
+clap = { version = "4.5.38", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+split-debuginfo = "…"
+panic = "abort"
+overflow-checks = false
