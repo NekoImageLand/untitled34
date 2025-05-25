@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-shared = {path = "../shared", features = ["opendal-ext"]}
+shared = {path = "../shared", features = ["opendal-data-compat", "opendal-ext"]}
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

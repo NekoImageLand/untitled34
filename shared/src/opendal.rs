@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use opendal::layers::{ConcurrentLimitLayer, RetryLayer, TracingLayer};
 use opendal::{Operator, services};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -7,6 +6,7 @@ use std::env;
 use std::ops::Deref;
 use std::time::Duration;
 
+#[cfg(feature = "opendal-data-compat")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum EntryMode {
     FILE,
@@ -14,6 +14,7 @@ pub enum EntryMode {
     Unknown,
 }
 
+#[cfg(feature = "opendal-ext")]
 impl From<opendal::EntryMode> for EntryMode {
     fn from(mode: opendal::EntryMode) -> Self {
         match mode {
@@ -24,9 +25,11 @@ impl From<opendal::EntryMode> for EntryMode {
     }
 }
 
+#[cfg(feature = "opendal-data-compat")]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BytesContentRange(pub Option<u64>, pub Option<u64>, pub Option<u64>);
 
+#[cfg(feature = "opendal-ext")]
 impl From<opendal::raw::BytesContentRange> for BytesContentRange {
     fn from(raw: opendal::raw::BytesContentRange) -> Self {
         let size = raw.size();
@@ -38,6 +41,7 @@ impl From<opendal::raw::BytesContentRange> for BytesContentRange {
     }
 }
 
+#[cfg(feature = "opendal-data-compat")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Metadata {
     pub mode: EntryMode,
@@ -56,6 +60,7 @@ pub struct Metadata {
     pub user_metadata: Option<HashMap<String, String>>,
 }
 
+#[cfg(feature = "opendal-ext")]
 impl From<opendal::Metadata> for Metadata {
     fn from(m: opendal::Metadata) -> Self {
         Metadata {
@@ -77,12 +82,14 @@ impl From<opendal::Metadata> for Metadata {
     }
 }
 
+#[cfg(feature = "opendal-data-compat")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
     pub path: String,
     pub metadata: Metadata,
 }
 
+#[cfg(feature = "opendal-ext")]
 impl From<opendal::Entry> for Entry {
     fn from(e: opendal::Entry) -> Self {
         Entry {
@@ -92,10 +99,12 @@ impl From<opendal::Entry> for Entry {
     }
 }
 
+#[cfg(feature = "opendal-ext")]
 pub struct GenShinOperator {
     pub op: Operator,
 }
 
+#[cfg(feature = "opendal-ext")]
 impl Deref for GenShinOperator {
     type Target = Operator;
 
@@ -104,6 +113,8 @@ impl Deref for GenShinOperator {
     }
 }
 
+#[cfg(feature = "opendal-ext")]
+use opendal::layers::{ConcurrentLimitLayer, RetryLayer, TracingLayer};
 impl GenShinOperator {
     pub fn new() -> Result<Self, anyhow::Error> {
         let builder = services::S3::default()
