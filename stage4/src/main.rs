@@ -1,7 +1,6 @@
 use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use walkdir::WalkDir;
 
@@ -16,18 +15,6 @@ struct Cli {
     path: PathBuf,
     #[arg(short, long)]
     recursive: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct WrongFile {
-    path: String,
-    expected_ext: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct FailedFile {
-    path: String,
-    error: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .progress_chars("#>-"),
     );
 
-    let records: Vec<(Option<WrongFile>, Option<FailedFile>)> = paths
+    let records: Vec<(Option<shared::WrongExtFile>, Option<shared::FailedExtFile>)> = paths
         .into_par_iter()
         .progress_with(pb)
         .map(|path| {
@@ -70,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map(|s| s.to_ascii_lowercase());
                     if actual.as_deref() != Some(detected.as_str()) {
                         (
-                            Some(WrongFile {
+                            Some(shared::WrongExtFile {
                                 path: path_str,
                                 expected_ext: detected,
                             }),
@@ -82,14 +69,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Ok(None) => (
                     None,
-                    Some(FailedFile {
+                    Some(shared::FailedExtFile {
                         path: path_str,
                         error: "Unknown file type".into(),
                     }),
                 ),
                 Err(e) => (
                     None,
-                    Some(FailedFile {
+                    Some(shared::FailedExtFile {
                         path: path_str,
                         error: e.to_string(),
                     }),
@@ -98,8 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    let wrongs: Vec<WrongFile> = records.iter().filter_map(|(w, _)| w.clone()).collect();
-    let fails: Vec<FailedFile> = records.iter().filter_map(|(_, f)| f.clone()).collect();
+    let wrongs: Vec<shared::WrongExtFile> = records.iter().filter_map(|(w, _)| w.clone()).collect();
+    let fails: Vec<shared::FailedExtFile> = records.iter().filter_map(|(_, f)| f.clone()).collect();
 
     fs::write("wrong_files.json", serde_json::to_string_pretty(&wrongs)?)?;
     fs::write("failed_files.json", serde_json::to_string_pretty(&fails)?)?;

@@ -1,0 +1,21 @@
+[package]
+name = "stage5"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = {path = "../shared"}
+tokio.workspace = true
+opendal.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+bincode.workspace = true
+indicatif.workspace = true
+infer.workspace = true
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing-appender.workspace = true
+futures.workspace = true
+clap.workspace = true
