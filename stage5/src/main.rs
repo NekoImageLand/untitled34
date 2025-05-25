@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
     let file_appender = RollingFileAppender::new(Rotation::HOURLY, "logs", "stage5_opendal.log");
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
-        .with_filter(EnvFilter::new("debug"));
+        .with_filter(EnvFilter::new("warn"));
     tracing_subscriber::registry()
         .with(stdout_layer)
         .with(file_layer)
