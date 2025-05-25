@@ -1,5 +1,5 @@
 use plotters::prelude::*;
-use shared::NekoPoint;
+use shared::structure::NekoPoint;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 

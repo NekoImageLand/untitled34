@@ -8,7 +8,7 @@ use qdrant_client::qdrant::with_payload_selector::SelectorOptions as SelectorOpt
 use qdrant_client::qdrant::with_vectors_selector::SelectorOptions;
 use qdrant_client::qdrant::{GetPointsBuilder, GetResponse, PointId, VectorsSelector};
 use qdrant_client::qdrant::{point_id, value};
-use shared::{NekoPoint, NekoPointText};
+use shared::structure::{NekoPoint, NekoPointText};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::{Read, Write};

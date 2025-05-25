@@ -2414,6 +2414,7 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "opendal",
  "serde",
@@ -2494,7 +2495,6 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "plotters",
- "serde",
  "serde-pickle",
  "shared",
  "uuid",
@@ -2508,7 +2508,6 @@ dependencies = [
  "indicatif",
  "infer",
  "rayon",
- "serde",
  "serde_json",
  "shared",
  "walkdir",
@@ -2520,12 +2519,25 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "clap",
+ "shared",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "stage6"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
  "bytes",
  "clap",
  "futures",
  "indicatif",
  "infer",
- "opendal",
  "serde",
  "serde_json",
  "shared",

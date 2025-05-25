@@ -1,6 +1,7 @@
 use clap::Parser;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use shared::structure::{FailedExtFile, WrongExtFile};
 use std::{fs, path::PathBuf};
 use walkdir::WalkDir;
 
@@ -43,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .progress_chars("#>-"),
     );
 
-    let records: Vec<(Option<shared::WrongExtFile>, Option<shared::FailedExtFile>)> = paths
+    let records: Vec<(Option<WrongExtFile>, Option<FailedExtFile>)> = paths
         .into_par_iter()
         .progress_with(pb)
         .map(|path| {
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .map(|s| s.to_ascii_lowercase());
                     if actual.as_deref() != Some(detected.as_str()) {
                         (
-                            Some(shared::WrongExtFile {
+                            Some(WrongExtFile {
                                 path: path_str,
                                 expected_ext: detected,
                             }),
@@ -69,14 +70,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Ok(None) => (
                     None,
-                    Some(shared::FailedExtFile {
+                    Some(FailedExtFile {
                         path: path_str,
                         error: "Unknown file type".into(),
                     }),
                 ),
                 Err(e) => (
                     None,
-                    Some(shared::FailedExtFile {
+                    Some(FailedExtFile {
                         path: path_str,
                         error: e.to_string(),
                     }),
@@ -85,8 +86,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    let wrongs: Vec<shared::WrongExtFile> = records.iter().filter_map(|(w, _)| w.clone()).collect();
-    let fails: Vec<shared::FailedExtFile> = records.iter().filter_map(|(_, f)| f.clone()).collect();
+    let wrongs: Vec<WrongExtFile> = records.iter().filter_map(|(w, _)| w.clone()).collect();
+    let fails: Vec<FailedExtFile> = records.iter().filter_map(|(_, f)| f.clone()).collect();
 
     fs::write("wrong_files.json", serde_json::to_string_pretty(&wrongs)?)?;
     fs::write("failed_files.json", serde_json::to_string_pretty(&fails)?)?;

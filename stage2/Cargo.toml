@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+shared = {path = "../shared"}
 bincode.workspace = true
 serde-pickle.workspace = true
 uuid.workspace = true
@@ -12,4 +13,3 @@ qdrant-client.workspace = true
 tokio.workspace = true
 prost.workspace = true
 opendal.workspace = true
-shared = {path = "../shared"}
