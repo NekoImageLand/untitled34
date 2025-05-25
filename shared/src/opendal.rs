@@ -1,11 +1,18 @@
-use crate::structure::EntryMode;
 use chrono::{DateTime, Utc};
 use opendal::layers::{ConcurrentLimitLayer, RetryLayer, TracingLayer};
 use opendal::{Operator, services};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
+use std::ops::Deref;
 use std::time::Duration;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum EntryMode {
+    FILE,
+    DIR,
+    Unknown,
+}
 
 impl From<opendal::EntryMode> for EntryMode {
     fn from(mode: opendal::EntryMode) -> Self {
@@ -87,6 +94,14 @@ impl From<opendal::Entry> for Entry {
 
 pub struct GenShinOperator {
     pub op: Operator,
+}
+
+impl Deref for GenShinOperator {
+    type Target = Operator;
+
+    fn deref(&self) -> &Self::Target {
+        &self.op
+    }
 }
 
 impl GenShinOperator {

@@ -36,11 +36,3 @@ pub enum TriageFile {
     Wrong(WrongExtFile),
     Failed(FailedExtFile),
 }
-
-/// P3
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum EntryMode {
-    FILE,
-    DIR,
-    Unknown,
-}

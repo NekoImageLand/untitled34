@@ -18,7 +18,7 @@ impl Deref for Stage5Operator {
 
 impl Stage5Operator {
     pub async fn filelist(&self, list_path: &str) -> Result<Vec<shared::opendal::Entry>> {
-        let res = self.op.list(list_path).await?;
+        let res = self.opt.list(list_path).await?;
         tracing::info!("Fetched result from s3, len = {:?}", &res.len());
         let res: Vec<shared::opendal::Entry> =
             res.into_iter().map(shared::opendal::Entry::from).collect();

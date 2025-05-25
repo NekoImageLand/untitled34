@@ -17,17 +17,25 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-pub struct Stage6Operator(GenShinOperator);
+pub struct Stage6Operator {
+    op: GenShinOperator,
+    worker_num: usize,
+}
 
 impl Deref for Stage6Operator {
     type Target = GenShinOperator;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.op
     }
 }
 
 impl Stage6Operator {
+    pub fn new(worker_num: usize) -> Result<Self> {
+        let op = GenShinOperator::new()?;
+        Ok(Self { op, worker_num })
+    }
+
     pub async fn verify(
         self: Arc<Self>,
         entries: Vec<shared::opendal::Entry>,
@@ -150,7 +158,7 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let op = Stage6Operator(GenShinOperator::new()?);
+    let op = Stage6Operator::new(cli.worker_num)?;
     let checkpoint = File::open(cli.filelist_checkpoint_path)?;
     let mut reader = std::io::BufReader::new(checkpoint);
     let entries: Vec<shared::opendal::Entry> =
