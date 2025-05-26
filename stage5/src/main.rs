@@ -39,7 +39,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let stdout = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("info"));
+    let stdout = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("debug"));
     let file_appender = RollingFileAppender::new(Rotation::HOURLY, "logs", "stage5.log");
     let file = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
