@@ -9,8 +9,10 @@ uuid.workspace = true
 chrono.workspace = true
 opendal = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
+qdrant-client = {workspace = true, optional = true}
 
 [features]
 default = []
 opendal-data-compat = []
 opendal-ext = ["opendal", "anyhow"]
+qdrant-ext = ["qdrant-client", "anyhow"]

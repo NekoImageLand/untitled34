@@ -2417,6 +2417,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "opendal",
+ "qdrant-client",
  "serde",
  "uuid",
 ]
@@ -2567,6 +2568,21 @@ dependencies = [
 [[package]]
 name = "stage8"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "futures",
+ "indicatif",
+ "qdrant-client",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "strsim"

@@ -81,7 +81,7 @@ impl Stage6Operator {
     ) -> Result<Option<TriageFile>> {
         let path = file.path;
         let len = file.metadata.content_length.unwrap_or_default();
-        match self.op.read_with(&path).range(0..=min(len - 1, 8192)).await {
+        match self.op.read_with(&path).range(0..min(len, 8192 + 1)).await {
             Ok(buf) => match infer::get(buf.chunk()) {
                 Some(kind) => {
                     let inferred_ext = kind.extension();

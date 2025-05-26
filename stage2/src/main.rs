@@ -8,6 +8,7 @@ use qdrant_client::qdrant::with_payload_selector::SelectorOptions as SelectorOpt
 use qdrant_client::qdrant::with_vectors_selector::SelectorOptions;
 use qdrant_client::qdrant::{GetPointsBuilder, GetResponse, PointId, VectorsSelector};
 use qdrant_client::qdrant::{point_id, value};
+use shared::qdrant::GenShinQdrantClient;
 use shared::structure::{NekoPoint, NekoPointText};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -73,24 +74,24 @@ fn extract_point(pb: ProgressBar, points: GetResponse) -> HashMap<Uuid, NekoPoin
 }
 
 // TODO:
-async fn fill_pic_size(map: HashMap<Uuid, NekoPoint>) -> Result<(), Box<dyn std::error::Error>> {
-    let builder = services::S3::default()
-        .bucket("nekoimg")
-        .access_key_id("")
-        .secret_access_key("")
-        .endpoint("");
-    let op = Operator::new(builder)?
-        .layer(LoggingLayer::default())
-        .layer(
-            RetryLayer::default()
-                .with_max_times(3)
-                .with_factor(1.5)
-                .with_min_delay(Duration::from_millis(50))
-                .with_max_delay(Duration::from_millis(200)),
-        )
-        .finish();
-    Ok(())
-}
+// async fn fill_pic_size(map: HashMap<Uuid, NekoPoint>) -> Result<(), Box<dyn std::error::Error>> {
+//     let builder = services::S3::default()
+//         .bucket("nekoimg")
+//         .access_key_id("")
+//         .secret_access_key("")
+//         .endpoint("");
+//     let op = Operator::new(builder)?
+//         .layer(LoggingLayer::default())
+//         .layer(
+//             RetryLayer::default()
+//                 .with_max_times(3)
+//                 .with_factor(1.5)
+//                 .with_min_delay(Duration::from_millis(50))
+//                 .with_max_delay(Duration::from_millis(200)),
+//         )
+//         .finish();
+//     Ok(())
+// }
 
 #[tokio::main]
 pub async fn main() {
@@ -120,10 +121,7 @@ pub async fn main() {
         }
         Err(_) => {
             println!("File not found, fetching...");
-            let client = Qdrant::from_url("http://localhost:6334")
-                .timeout(std::time::Duration::from_secs(3600))
-                .build()
-                .unwrap();
+            let client = GenShinQdrantClient::new().unwrap();
             points = client
                 .get_points(
                     GetPointsBuilder::new("nekoimg", point_list)
