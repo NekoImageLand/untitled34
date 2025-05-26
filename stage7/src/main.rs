@@ -112,7 +112,10 @@ impl Stage7Operator {
             tracing::info!("Dry run: {} -> {}", wrong_file_path, right_file_path);
             return Ok(None);
         }
-        match self.rename_atomic_task(&wrong_file_path, &right_file_path).await {
+        match self
+            .rename_atomic_task(&wrong_file_path, &right_file_path)
+            .await
+        {
             Ok(_) => {
                 tracing::debug!("Renamed {} to {}", wrong_file_path, right_file_path);
                 Ok(None)

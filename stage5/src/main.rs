@@ -17,8 +17,12 @@ impl Deref for Stage5Operator {
 }
 
 impl Stage5Operator {
-    pub async fn filelist(&self, list_path: &str) -> Result<Vec<shared::opendal::Entry>> {
-        let res = self.op.list(list_path).await?;
+    pub async fn filelist(
+        &self,
+        list_path: &str,
+        is_recursive: bool,
+    ) -> Result<Vec<shared::opendal::Entry>> {
+        let res = self.op.list_with(list_path).recursive(is_recursive).await?;
         tracing::info!("Fetched result from s3, len = {:?}", &res.len());
         let res: Vec<shared::opendal::Entry> =
             res.into_iter().map(shared::opendal::Entry::from).collect();
@@ -35,6 +39,8 @@ struct Cli {
     filelist_checkpoint_path: String,
     #[arg(short, long, default_value = "false")]
     overwrite: bool,
+    #[arg(short, long, default_value = "false")]
+    recursive: bool,
 }
 
 #[tokio::main]
@@ -62,7 +68,9 @@ async fn main() -> Result<()> {
     }
 
     let op = Stage5Operator(GenShinOperator::new()?);
-    let entries = op.filelist(&cli.filelist_bucket_path).await?;
+    let entries = op
+        .filelist(&cli.filelist_bucket_path, cli.recursive)
+        .await?;
     tracing::info!(
         "Saving {} entries to {}",
         entries.len(),
