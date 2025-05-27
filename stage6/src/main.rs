@@ -7,6 +7,7 @@ use serde::Deserialize;
 use shared::opendal::GenShinOperator;
 use shared::structure::{FailedExtFile, TriageFile, WrongExtFile};
 use std::cmp::min;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
@@ -159,13 +160,12 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let op = Stage6Operator::new(cli.worker_num)?;
-    let checkpoint = File::open(cli.filelist_checkpoint_path)?;
-    let mut reader = std::io::BufReader::new(checkpoint);
+    let checkpoint = fs::read(cli.filelist_checkpoint_path)?;
     let entries: Vec<shared::opendal::Entry> =
-        bincode::serde::decode_from_reader(&mut reader, bincode::config::standard())?;
+        bincode::serde::decode_from_slice(&checkpoint, bincode::config::standard())?.0;
     let mut cfg = if let Some(path) = cli.include_exclude_file.as_ref() {
-        let file = File::open(path)?;
-        serde_json::from_reader(file)?
+        let file = fs::read(path)?;
+        serde_json::from_slice(&file)?
     } else {
         FilterConfig::default()
     };

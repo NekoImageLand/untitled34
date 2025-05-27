@@ -1,8 +1,5 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use opendal::layers::{LoggingLayer, RetryLayer};
-use opendal::{Operator, services};
 use prost::Message;
-use qdrant_client::Qdrant;
 use qdrant_client::qdrant::vectors_output::VectorsOptions as VectorsOptionsOutput;
 use qdrant_client::qdrant::with_payload_selector::SelectorOptions as SelectorOptionsPayload;
 use qdrant_client::qdrant::with_vectors_selector::SelectorOptions;
@@ -13,7 +10,6 @@ use shared::structure::{NekoPoint, NekoPointText};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::{Read, Write};
-use std::time::Duration;
 use uuid::Uuid;
 
 fn extract_point(pb: ProgressBar, points: GetResponse) -> HashMap<Uuid, NekoPoint> {

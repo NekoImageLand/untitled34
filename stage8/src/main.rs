@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shared::qdrant::GenShinQdrantClient;
 use shared::structure::WrongExtFile;
-use std::env;
 use std::fs::File;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{env, fs};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -174,9 +174,8 @@ async fn main() -> anyhow::Result<()> {
         cli.worker_num,
         &cli.url_prefix,
     )?);
-    let need_rename_filelist = File::open(&cli.wrong_ext_file_list)?;
-    let need_rename_filelist =
-        serde_json::from_reader::<File, Vec<WrongExtFile>>(need_rename_filelist)?;
+    let need_rename_filelist = fs::read(&cli.wrong_ext_file_list)?;
+    let need_rename_filelist: Vec<WrongExtFile> = serde_json::from_slice(&need_rename_filelist)?;
     let rename_ops = need_rename_filelist
         .into_iter()
         .filter_map(|file| {
