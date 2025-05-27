@@ -1,11 +1,16 @@
 mod s3_downloader;
 
+use crate::s3_downloader::S3Downloader;
 use anyhow::Result;
 use rayon::prelude::*;
 use shared::cosine_sim::cosine_sim;
 use shared::structure::{NekoPoint, NekoPointExt, NekoPointExtResource};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 use uuid::Uuid;
 
 const TEXT_SIM_THRESHOLD: f32 = 0.9;
@@ -16,7 +21,7 @@ fn find_text_anomalies<'a>(
 ) -> Option<Vec<&'a Uuid>> {
     let mut id_vec_pairs = Vec::with_capacity(text_points.len());
     for &id in text_points {
-        if let Some((pt, _)) = points_metadata.get(&id) {
+        if let Some((pt, _)) = points_metadata.get(id) {
             if let Some(ref txt) = pt.text_info {
                 id_vec_pairs.push((id, txt.text_vector.as_slice()));
             }
@@ -72,7 +77,7 @@ fn extract_clusters<'a>(
             let text_points_size = text_points.as_ref().map_or(0, |v| v.len());
             let text_anomalies = text_points
                 .as_ref()
-                .and_then(|tp| find_text_anomalies(tp, &points_metadata));
+                .and_then(|tp| find_text_anomalies(tp, points_metadata));
             let text_anomalies_set: HashSet<&Uuid> = text_anomalies
                 .as_deref()
                 .unwrap_or(&[])
@@ -125,7 +130,7 @@ fn extract_clusters<'a>(
                             hs.iter()
                                 .max_by_key(|&&id| {
                                     points_metadata
-                                        .get(&id)
+                                        .get(id)
                                         .map(|(pt, _)| pt.size.unwrap_or_default())
                                         .unwrap_or(0)
                                 })
@@ -162,6 +167,15 @@ fn extract_clusters<'a>(
 }
 
 fn main() -> Result<()> {
+    let stdout = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("info"));
+    let file_appender = RollingFileAppender::new(Rotation::HOURLY, "logs", "stage9.log");
+    let file = tracing_subscriber::fmt::layer()
+        .with_writer(file_appender)
+        .with_filter(EnvFilter::new("info"));
+    tracing_subscriber::registry()
+        .with(stdout)
+        .with(file)
+        .init();
     let points_clusters: Vec<HashSet<Uuid>> =
         serde_pickle::from_slice(&fs::read(r"global_clusters.pkl")?, Default::default())?;
     let points_metadata = fs::read(r"points_map.bin")?;
@@ -170,7 +184,7 @@ fn main() -> Result<()> {
     let s3_file_data = fs::read(r"opendal_list_file_after_rename.bin")?;
     let s3_file_data: Vec<shared::opendal::Entry> =
         bincode::serde::decode_from_slice(&s3_file_data, bincode::config::standard())?.0;
-    println!("Successfully loaded data from files.");
+    tracing::info!("Successfully loaded data from files.");
     let s3_pre_map: HashMap<String, String> = s3_file_data
         .into_iter()
         .map(|entry| {
@@ -179,7 +193,7 @@ fn main() -> Result<()> {
             (key, val)
         })
         .collect();
-    println!("S3 map: {:?}", s3_pre_map.len());
+    tracing::info!("S3 map: {:?}", s3_pre_map.len());
     let points_metadata: HashMap<Uuid, (NekoPoint, NekoPointExt)> = points_metadata
         .into_iter()
         .map(|(id, point)| {
@@ -195,10 +209,9 @@ fn main() -> Result<()> {
             (id, (point, ext))
         })
         .collect();
-    println!("S3 metadata: {:?}", points_metadata.len());
+    tracing::info!("S3 metadata: {:?}", points_metadata.len());
     // Vec<(Option<Vec<KeptTextAnomaliesPic>>, Option<Vec<NeedTriageGifs>>, Option<KeptNonGif>, Option<Vec<OtherNeedDeletePics>>)>
     let res = extract_clusters(&points_clusters, &points_metadata);
-    // TODO:
     let all_kept_text_anomalies: Vec<&Vec<&Uuid>> = res
         .iter()
         .filter_map(|(opt_text, _, _, _)| opt_text.as_ref())
@@ -213,16 +226,22 @@ fn main() -> Result<()> {
         .copied()
         .collect();
     let all_kept_non_gif: Vec<&Uuid> = res.iter().filter_map(|(_, _, opt_ng, _)| *opt_ng).collect();
-    println!("Successfully loaded data from files.");
-    println!(
+    tracing::info!("Successfully loaded data from files.");
+    tracing::info!(
         "all_kept_text_anomalies: {:?}",
         all_kept_text_anomalies.len()
     );
-    println!("all_need_triage_gifs: {:?}", all_need_triage_gifs.len());
-    println!(
+    tracing::info!("all_need_triage_gifs: {:?}", all_need_triage_gifs.len());
+    tracing::info!(
         "all_need_triage_gifs_flat: {:?}",
         all_need_triage_gifs_flat.len()
     );
-    println!("all_kept_non_gif: {:?}", all_kept_non_gif.len());
+    tracing::info!("all_kept_non_gif: {:?}", all_kept_non_gif.len());
+    // Now, we need download all_need_triage_gifs_flat from S3
+    tracing::info!("Starting S3 download for triage GIFs...");
+    let triage_gif_downloader = S3Downloader::new(20, "nekoimg_stage9_gifs", false)?;
+    let download_result =
+        triage_gif_downloader.download_files(all_need_triage_gifs_flat.as_slice());
+    todo!();
     Ok(())
 }

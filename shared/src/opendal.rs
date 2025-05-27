@@ -107,6 +107,7 @@ impl From<opendal::Entry> for Entry {
 }
 
 #[cfg(feature = "opendal-ext")]
+#[derive(Debug)]
 pub struct GenShinOperator {
     pub op: opendal::Operator,
 }

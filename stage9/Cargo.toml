@@ -4,12 +4,20 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-shared = {path = "../shared", features = ["opendal-data-compat"]}
+shared = {path = "../shared", features = ["opendal-data-compat", "opendal-ext"]}
 bincode.workspace = true
 serde-pickle.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
+thiserror.workspace = true
 rayon.workspace = true
+indicatif.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+tokio.workspace = true
+futures.workspace = true
 candle-core.workspace = true
 candle-nn.workspace = true
 candle-transformers.workspace = true

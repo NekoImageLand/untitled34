@@ -3227,9 +3227,17 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "clap",
+ "futures",
+ "indicatif",
  "rayon",
  "serde-pickle",
  "shared",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "uuid",
 ]
 
