@@ -1,0 +1,12 @@
+[package]
+name = "stage9"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = {path = "../shared", features = ["opendal-data-compat"]}
+bincode.workspace = true
+serde-pickle.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+rayon.workspace = true

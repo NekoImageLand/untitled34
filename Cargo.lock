@@ -2585,6 +2585,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "stage9"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "rayon",
+ "serde-pickle",
+ "shared",
+ "uuid",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

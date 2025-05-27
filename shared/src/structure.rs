@@ -15,7 +15,7 @@ pub struct NekoPoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NekoPointText {
     pub text: String,
-    pub text_vector: Vec<f32>,
+    pub text_vector: Vec<f32>, // 768 Dimension
 }
 
 /// P2

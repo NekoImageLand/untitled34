@@ -22,7 +22,10 @@ pub struct Stage7Operator {
     op: GenShinOperator,
     dry_run: bool,
     worker_num: usize,
+    need_skip: bool,
     skip_ext_pairs: HashSet<(Cow<'static, str>, Cow<'static, str>)>,
+    need_include: bool,
+    include_ext_pairs: HashSet<(Cow<'static, str>, Cow<'static, str>)>,
 }
 
 impl Deref for Stage7Operator {
@@ -38,13 +41,17 @@ impl Stage7Operator {
         dry_run: bool,
         worker_num: usize,
         skip_ext_pairs: HashSet<(Cow<'static, str>, Cow<'static, str>)>,
+        include_ext_pairs: HashSet<(Cow<'static, str>, Cow<'static, str>)>,
     ) -> Result<Self> {
         let op = GenShinOperator::new()?;
         Ok(Self {
             op,
             dry_run,
             worker_num,
+            need_skip: !skip_ext_pairs.is_empty(),
+            need_include: !include_ext_pairs.is_empty(),
             skip_ext_pairs,
+            include_ext_pairs,
         })
     }
 
@@ -97,12 +104,25 @@ impl Stage7Operator {
             file.path.split('.').next().unwrap(),
             file.expected_ext.as_str()
         );
-        if self
-            .skip_ext_pairs
-            .contains(&(Cow::Borrowed(wrong_ext), Cow::Borrowed(right_ext)))
+        if self.need_include
+            && !self
+                .include_ext_pairs
+                .contains(&(wrong_ext.into(), right_ext.into()))
         {
             tracing::warn!(
-                "Skipping rename from {} to {}",
+                "Skipping rename from {} to {} due to include_ext_pairs",
+                wrong_file_path,
+                right_file_path
+            );
+            return Ok::<_, anyhow::Error>(None);
+        }
+        if self.need_skip
+            && self
+                .skip_ext_pairs
+                .contains(&(Cow::Borrowed(wrong_ext), Cow::Borrowed(right_ext)))
+        {
+            tracing::warn!(
+                "Skipping rename from {} to {} due to skip_ext_pairs",
                 wrong_file_path,
                 right_file_path
             );
@@ -152,6 +172,13 @@ struct Cli {
           value_names = &["FROM","TO"],
           action = clap::ArgAction::Append)]
     skip_ext_pair: Option<Vec<String>>,
+    /// Include renaming for these extensions
+    /// Example: --include-ext jpeg jpg --include-ext png jpg
+    #[arg(long,
+          number_of_values = 2,
+          value_names = &["FROM","TO"],
+          action = clap::ArgAction::Append)]
+    include_ext_pair: Option<Vec<String>>,
 }
 
 #[tokio::main]
@@ -178,7 +205,24 @@ async fn main() -> Result<()> {
             }
         })
         .collect();
-    let op = Stage7Operator::new(cli.dry_run, cli.worker_num, skip_ext_pairs)?;
+    let include_ext_pairs: HashSet<(Cow<'static, str>, Cow<'static, str>)> = cli
+        .include_ext_pair
+        .unwrap_or_default()
+        .chunks(2)
+        .filter_map(|chunk| {
+            if chunk.len() == 2 {
+                Some((Cow::Owned(chunk[0].clone()), Cow::Owned(chunk[1].clone())))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let op = Stage7Operator::new(
+        cli.dry_run,
+        cli.worker_num,
+        skip_ext_pairs,
+        include_ext_pairs,
+    )?;
     let file = std::fs::File::open(cli.wrong_file)?;
     let files: Vec<WrongExtFile> = serde_json::from_reader(file)?;
     tracing::info!("Loaded {} files", files.len());

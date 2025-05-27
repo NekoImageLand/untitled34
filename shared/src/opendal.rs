@@ -1,10 +1,7 @@
 use chrono::{DateTime, Utc};
-use opendal::{Operator, services};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::env;
-use std::ops::Deref;
-use std::time::Duration;
+use std::path::Path;
 
 #[cfg(feature = "opendal-data-compat")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -14,7 +11,7 @@ pub enum EntryMode {
     Unknown,
 }
 
-#[cfg(feature = "opendal-ext")]
+#[cfg(all(feature = "opendal-data-compat", feature = "opendal-ext"))]
 impl From<opendal::EntryMode> for EntryMode {
     fn from(mode: opendal::EntryMode) -> Self {
         match mode {
@@ -29,7 +26,7 @@ impl From<opendal::EntryMode> for EntryMode {
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BytesContentRange(pub Option<u64>, pub Option<u64>, pub Option<u64>);
 
-#[cfg(feature = "opendal-ext")]
+#[cfg(all(feature = "opendal-data-compat", feature = "opendal-ext"))]
 impl From<opendal::raw::BytesContentRange> for BytesContentRange {
     fn from(raw: opendal::raw::BytesContentRange) -> Self {
         let size = raw.size();
@@ -60,7 +57,7 @@ pub struct Metadata {
     pub user_metadata: Option<HashMap<String, String>>,
 }
 
-#[cfg(feature = "opendal-ext")]
+#[cfg(all(feature = "opendal-data-compat", feature = "opendal-ext"))]
 impl From<opendal::Metadata> for Metadata {
     fn from(m: opendal::Metadata) -> Self {
         Metadata {
@@ -89,7 +86,17 @@ pub struct Entry {
     pub metadata: Metadata,
 }
 
-#[cfg(feature = "opendal-ext")]
+#[cfg(feature = "opendal-data-compat")]
+impl Entry {
+    pub fn to_point(&self) -> &str {
+        Path::new(&self.path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap()
+    }
+}
+
+#[cfg(all(feature = "opendal-data-compat", feature = "opendal-ext"))]
 impl From<opendal::Entry> for Entry {
     fn from(e: opendal::Entry) -> Self {
         Entry {
@@ -101,12 +108,12 @@ impl From<opendal::Entry> for Entry {
 
 #[cfg(feature = "opendal-ext")]
 pub struct GenShinOperator {
-    pub op: Operator,
+    pub op: opendal::Operator,
 }
 
 #[cfg(feature = "opendal-ext")]
-impl Deref for GenShinOperator {
-    type Target = Operator;
+impl std::ops::Deref for GenShinOperator {
+    type Target = opendal::Operator;
 
     fn deref(&self) -> &Self::Target {
         &self.op
@@ -114,16 +121,18 @@ impl Deref for GenShinOperator {
 }
 
 #[cfg(feature = "opendal-ext")]
-use opendal::layers::{ConcurrentLimitLayer, RetryLayer, TracingLayer};
 impl GenShinOperator {
     pub fn new() -> Result<Self, anyhow::Error> {
-        let builder = services::S3::default()
+        use opendal::layers::{ConcurrentLimitLayer, RetryLayer, TracingLayer};
+        use std::env;
+        use std::time::Duration;
+        let builder = opendal::services::S3::default()
             .bucket(&env::var("S3_BUCKET")?)
             .access_key_id(&env::var("S3_ACCESS_KEY")?)
             .secret_access_key(&env::var("S3_SECRET_ACCESS_KEY")?)
             .endpoint(&env::var("S3_ENDPOINT")?)
             .region(&env::var("S3_REGION")?);
-        let op = Operator::new(builder)?
+        let op = opendal::Operator::new(builder)?
             .layer(TracingLayer)
             .layer(
                 RetryLayer::default()
