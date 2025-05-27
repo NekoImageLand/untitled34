@@ -7,6 +7,7 @@ use shared::opendal::GenShinOperator;
 use shared::structure::WrongExtFile;
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::fs;
 use std::ops::Deref;
 use std::sync::Arc;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -173,7 +174,7 @@ struct Cli {
           action = clap::ArgAction::Append)]
     skip_ext_pair: Option<Vec<String>>,
     /// Include renaming for these extensions
-    /// Example: --include-ext jpeg jpg --include-ext png jpg
+    /// Example: --include-ext-pair jpeg jpg --include-ext-pair png jpg
     #[arg(long,
           number_of_values = 2,
           value_names = &["FROM","TO"],
@@ -223,8 +224,8 @@ async fn main() -> Result<()> {
         skip_ext_pairs,
         include_ext_pairs,
     )?;
-    let file = std::fs::File::open(cli.wrong_file)?;
-    let files: Vec<WrongExtFile> = serde_json::from_reader(file)?;
+    let file = fs::read(cli.wrong_file)?;
+    let files: Vec<WrongExtFile> = serde_json::from_slice(&file)?;
     tracing::info!("Loaded {} files", files.len());
     let failed_tasks = Arc::new(op).rename_task(files).await?;
     if let Some(tasks) = failed_tasks {
