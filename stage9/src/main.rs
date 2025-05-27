@@ -1,65 +1,11 @@
+mod cosine_sim;
+use crate::cosine_sim::cosine_sim;
 use anyhow::Result;
-use core::arch::x86_64::*;
 use rayon::prelude::*;
 use shared::structure::NekoPoint;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use uuid::Uuid;
-
-#[inline]
-#[allow(unsafe_op_in_unsafe_fn)]
-pub fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
-    if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-        unsafe { cosine_sim_avx2(a, b) }
-    } else {
-        let dot = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>();
-        let na = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let nb = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-        dot / (na * nb)
-    }
-}
-
-#[inline]
-#[target_feature(enable = "avx2,fma")]
-#[allow(unsafe_op_in_unsafe_fn)]
-unsafe fn cosine_sim_avx2(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let mut sum_dot = _mm256_setzero_ps();
-    let mut sum_a2 = _mm256_setzero_ps();
-    let mut sum_b2 = _mm256_setzero_ps();
-    let chunks = len / 8;
-    for i in 0..chunks {
-        let pa = a.as_ptr().add(i * 8);
-        let pb = b.as_ptr().add(i * 8);
-        let va = _mm256_loadu_ps(pa);
-        let vb = _mm256_loadu_ps(pb);
-        sum_dot = _mm256_fmadd_ps(va, vb, sum_dot);
-        sum_a2 = _mm256_fmadd_ps(va, va, sum_a2);
-        sum_b2 = _mm256_fmadd_ps(vb, vb, sum_b2);
-    }
-    #[inline(always)]
-    unsafe fn hsum256(v: __m256) -> f32 {
-        let hi = _mm256_extractf128_ps::<1>(v);
-        let lo = _mm256_castps256_ps128(v);
-        let sum128 = _mm_add_ps(lo, hi);
-        let shuf = _mm_movehdup_ps(sum128);
-        let sums = _mm_add_ps(sum128, shuf);
-        let shuf2 = _mm_movehl_ps(shuf, sums);
-        let sums2 = _mm_add_ss(sums, shuf2);
-        _mm_cvtss_f32(sums2)
-    }
-    let mut dot = hsum256(sum_dot);
-    let mut a2 = hsum256(sum_a2);
-    let mut b2 = hsum256(sum_b2);
-    for i in (chunks * 8)..len {
-        let ai = *a.get_unchecked(i);
-        let bi = *b.get_unchecked(i);
-        dot += ai * bi;
-        a2 += ai * ai;
-        b2 += bi * bi;
-    }
-    dot / (a2.sqrt() * b2.sqrt())
-}
 
 struct NekoPointExt {
     file_path: String,
@@ -129,10 +75,16 @@ fn main() -> Result<()> {
         })
         .collect();
     println!("S3 metadata: {:?}", points_metadata.len());
-    // Vec<(Vec<KeptTextAnomaliesPic>, Vec<NeedTriageGifs>, KeptNonGif)>
-    let res: Vec<(Option<Vec<&Uuid>>, Option<Vec<&Uuid>>, Option<&Uuid>)> = points_clusters
+    // Vec<(Option<Vec<KeptTextAnomaliesPic>>, Option<Vec<NeedTriageGifs>>, Option<KeptNonGif>, Option<Vec<OtherNeedDeletePics>>)>
+    let res: Vec<(
+        Option<Vec<&Uuid>>,
+        Option<Vec<&Uuid>>,
+        Option<&Uuid>,
+        Option<Vec<&Uuid>>,
+    )> = points_clusters
         .par_iter()
         .map(|cursor| {
+            let cursor_ref: HashSet<&Uuid> = cursor.iter().collect();
             // stage1
             let text_points = cursor
                 .iter()
@@ -151,74 +103,114 @@ fn main() -> Result<()> {
                         None => vec![id],
                     })
                 });
-            let text_anomalies = match text_points {
-                Some(text_points) => find_text_anomalies(&text_points, &points_metadata),
-                None => None,
-            };
-            if let Some(anomalies) = &text_anomalies {
-                println!(
-                    "Cluster with {} (in {}) text anomalies: {:?}",
-                    anomalies.len(),
-                    cursor.len(),
-                    &anomalies
+            let text_points_size = text_points.as_ref().map_or(0, |v| v.len());
+            let text_anomalies = text_points
+                .as_ref()
+                .and_then(|tp| find_text_anomalies(tp, &points_metadata));
+            let text_anomalies_set: HashSet<&Uuid> = text_anomalies
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .copied()
+                .collect();
+            let non_text_anomalies_set: HashSet<&Uuid> = cursor_ref
+                .difference(&text_anomalies_set)
+                .copied()
+                .collect();
+            if text_points_size == cursor.len() && text_points == text_anomalies {
+                // println!("All points in the current cluster have textual dissimilarity, skip!");
+                return (
+                    text_anomalies,
+                    None,
+                    None,
+                    Some(non_text_anomalies_set.into_iter().collect()),
                 );
             }
             // stage2
-            let cursor_except_text_anomalies: Vec<&Uuid> = match &text_anomalies {
-                Some(anomalies) if !anomalies.is_empty() => {
-                    cursor.iter().filter(|id| !anomalies.contains(id)).collect()
-                }
-                _ => cursor.iter().collect(),
-            };
-            // All points in the current cluster have textual dissimilarity, skip!
-            if cursor_except_text_anomalies.is_empty() {
-                return (text_anomalies, None, None);
-            }
-            let (gif_points, non_gif_points) = cursor_except_text_anomalies.into_iter().fold(
-                (None::<Vec<&Uuid>>, None::<Vec<&Uuid>>),
-                |(mut gp, mut ngp), id| {
-                    let is_gif = points_metadata
-                        .get(id)
-                        .map(|(_, ex)| ex.ext() == "gif")
-                        .unwrap_or(false);
-                    if is_gif {
-                        match gp {
-                            Some(ref mut v) => v.push(id),
-                            None => gp = Some(vec![id]),
+            let mut gif_points_in_left_points: Option<HashSet<&Uuid>> = None;
+            let mut non_gif_points_in_left_points: Option<HashSet<&Uuid>> = None;
+            for &id in non_text_anomalies_set.iter() {
+                let is_gif = points_metadata
+                    .get(id)
+                    .map(|(_, ex)| ex.ext() == "gif")
+                    .unwrap_or(false);
+                match is_gif {
+                    true => {
+                        if gif_points_in_left_points.is_none() {
+                            gif_points_in_left_points = Some(HashSet::new());
                         }
-                    } else {
-                        match ngp {
-                            Some(ref mut v) => v.push(id),
-                            None => ngp = Some(vec![id]),
-                        }
+                        gif_points_in_left_points.as_mut().unwrap().insert(id);
                     }
-                    (gp, ngp)
+                    false => {
+                        if non_gif_points_in_left_points.is_none() {
+                            non_gif_points_in_left_points = Some(HashSet::new());
+                        }
+                        non_gif_points_in_left_points.as_mut().unwrap().insert(id);
+                    }
+                }
+            }
+            // stage3 (Option<HashSet<&NeedTriageGifs>>, Option<&KeptNonGif>)
+            let gif_spilt: (Option<HashSet<&Uuid>>, Option<&Uuid>) =
+                match (gif_points_in_left_points, non_gif_points_in_left_points) {
+                    (Some(gif), Some(_none_gif)) => (Some(gif), None),
+                    (Some(gif), None) => (Some(gif), None),
+                    (None, Some(non_gif)) => {
+                        let biggest_non_gif = non_gif
+                            .iter()
+                            .max_by_key(|&&id| {
+                                points_metadata
+                                    .get(id)
+                                    .map(|(pt, _)| pt.size.unwrap_or_default())
+                                    .unwrap_or(0)
+                            })
+                            .cloned();
+                        (None, biggest_non_gif)
+                    }
+                    (None, None) => {
+                        panic!("No gif points or non-gif points were given")
+                    }
+                };
+            // stage4 return it!
+            // Return (1) Vec<(Option<Vec<KeptTextAnomaliesPic>>, (2) Option<Vec<NeedTriageGifs>>,
+            // (3) Option<KeptNonGif>, (4) Option<Vec<OtherNeedDeletePics>>)>
+            // Now we calculate Option<Vec<OtherNeedDeletePics>>
+            // HashSet<OtherNeedDeletePics> = <HashSet>cursor_refs - <HashSet>text_anomalies - <HashSet>gif_spilt.0 - <Uuid>gif_spilt.1
+            let mut delete_set: HashSet<&Uuid> = gif_spilt.0.as_ref().map_or_else(
+                || non_text_anomalies_set.iter().copied().collect(),
+                |gif_set| {
+                    non_text_anomalies_set
+                        .difference(gif_set)
+                        .copied()
+                        .collect()
                 },
             );
-            // stage3
-            let gif_spilt: (Option<Vec<&Uuid>>, Option<&Uuid>) = match (gif_points, non_gif_points)
-            {
-                (Some(gif), Some(_none_gif)) => (Some(gif), None),
-                (Some(gif), None) => (Some(gif), None),
-                (None, Some(non_gif)) => {
-                    let biggest_non_gif = non_gif
-                        .iter()
-                        .max_by_key(|&&id| {
-                            points_metadata
-                                .get(id)
-                                .map(|(pt, _)| pt.size.unwrap_or_default())
-                                .unwrap_or(0)
-                        })
-                        .cloned();
-                    (None, biggest_non_gif)
-                }
-                (None, None) => {
-                    panic!("No gif points or non-gif points were given")
-                }
-            };
-            (text_anomalies, gif_spilt.0, gif_spilt.1)
+            if let Some(id) = gif_spilt.1 {
+                delete_set.remove(id);
+            }
+            return (
+                text_anomalies.map(|v| v.into_iter().collect()),
+                gif_spilt.0.map(|v| v.into_iter().collect()),
+                gif_spilt.1,
+                Some(delete_set.into_iter().collect::<Vec<&Uuid>>()).filter(|v| !v.is_empty()),
+            );
         })
         .collect();
     // TODO:
+    let all_kept_text_anomalies: Vec<&Vec<&Uuid>> = res
+        .iter()
+        .filter_map(|(opt_text, _, _, _)| opt_text.as_ref())
+        .collect();
+    let all_need_triage_gifs: Vec<&Vec<&Uuid>> = res
+        .iter()
+        .filter_map(|(_, opt_gifs, _, _)| opt_gifs.as_ref())
+        .collect();
+    let all_kept_non_gif: Vec<&Uuid> = res.iter().filter_map(|(_, _, opt_ng, _)| *opt_ng).collect();
+    println!("Successfully loaded data from files.");
+    println!(
+        "all_kept_text_anomalies: {:?}",
+        all_kept_text_anomalies.len()
+    );
+    println!("all_need_triage_gifs: {:?}", all_need_triage_gifs.len());
+    println!("all_kept_non_gif: {:?}", all_kept_non_gif.len());
     Ok(())
 }

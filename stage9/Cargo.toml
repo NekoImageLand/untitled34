@@ -10,3 +10,6 @@ serde-pickle.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 rayon.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
