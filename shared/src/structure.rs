@@ -18,6 +18,25 @@ pub struct NekoPointText {
     pub text_vector: Vec<f32>, // 768 Dimension
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NekoPointExt {
+    pub file_path: String,
+    pub source: Option<NekoPointExtResource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum NekoPointExtResource {
+    LocalPath(String),
+    Blob(Vec<u8>),
+}
+
+impl NekoPointExt {
+    #[inline]
+    pub fn ext(&self) -> &str {
+        self.file_path.rsplit('.').next().unwrap()
+    }
+}
+
 /// P2
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WrongExtFile {

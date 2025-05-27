@@ -1,22 +1,12 @@
-mod cosine_sim;
-use crate::cosine_sim::cosine_sim;
+mod s3_downloader;
+
 use anyhow::Result;
 use rayon::prelude::*;
-use shared::structure::NekoPoint;
+use shared::cosine_sim::cosine_sim;
+use shared::structure::{NekoPoint, NekoPointExt, NekoPointExtResource};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use uuid::Uuid;
-
-struct NekoPointExt {
-    file_path: String,
-}
-
-impl NekoPointExt {
-    #[inline]
-    fn ext(&self) -> &str {
-        self.file_path.rsplit('.').next().unwrap()
-    }
-}
 
 const TEXT_SIM_THRESHOLD: f32 = 0.9;
 
@@ -48,40 +38,16 @@ fn find_text_anomalies<'a>(
     anomalies
 }
 
-fn main() -> Result<()> {
-    let points_clusters: Vec<HashSet<Uuid>> =
-        serde_pickle::from_slice(&fs::read(r"global_clusters.pkl")?, Default::default())?;
-    let points_metadata = fs::read(r"points_map.bin")?;
-    let points_metadata: HashMap<Uuid, NekoPoint> =
-        bincode::serde::decode_from_slice(&points_metadata, bincode::config::standard())?.0;
-    let s3_file_data = fs::read(r"opendal_list_file_after_rename.bin")?;
-    let s3_file_data: Vec<shared::opendal::Entry> =
-        bincode::serde::decode_from_slice(&s3_file_data, bincode::config::standard())?.0;
-    println!("Successfully loaded data from files.");
-    let s3_pre_map: HashMap<String, String> = s3_file_data
-        .into_iter()
-        .map(|entry| {
-            let key = entry.to_point().to_string();
-            let val = entry.path;
-            (key, val)
-        })
-        .collect();
-    println!("S3 map: {:?}", s3_pre_map.len());
-    let points_metadata: HashMap<Uuid, (NekoPoint, NekoPointExt)> = points_metadata
-        .into_iter()
-        .map(|(id, point)| {
-            let file_path = s3_pre_map.get(&point.id.to_string()).unwrap().clone();
-            (id, (point, NekoPointExt { file_path }))
-        })
-        .collect();
-    println!("S3 metadata: {:?}", points_metadata.len());
-    // Vec<(Option<Vec<KeptTextAnomaliesPic>>, Option<Vec<NeedTriageGifs>>, Option<KeptNonGif>, Option<Vec<OtherNeedDeletePics>>)>
-    let res: Vec<(
-        Option<Vec<&Uuid>>,
-        Option<Vec<&Uuid>>,
-        Option<&Uuid>,
-        Option<Vec<&Uuid>>,
-    )> = points_clusters
+fn extract_clusters<'a>(
+    points_clusters: &'a [HashSet<Uuid>],
+    points_metadata: &'a HashMap<Uuid, (NekoPoint, NekoPointExt)>,
+) -> Vec<(
+    Option<Vec<&'a Uuid>>,
+    Option<Vec<&'a Uuid>>,
+    Option<&'a Uuid>,
+    Option<Vec<&'a Uuid>>,
+)> {
+    points_clusters
         .par_iter()
         .map(|cursor| {
             let cursor_ref: HashSet<&Uuid> = cursor.iter().collect();
@@ -154,20 +120,18 @@ fn main() -> Result<()> {
                 match (gif_points_in_left_points, non_gif_points_in_left_points) {
                     (Some(gif), Some(_none_gif)) => (Some(gif), None),
                     (Some(gif), None) => (Some(gif), None),
-                    (None, Some(non_gif)) => {
-                        let biggest_non_gif = non_gif
-                            .iter()
-                            .max_by_key(|&&id| {
-                                points_metadata
-                                    .get(id)
-                                    .map(|(pt, _)| pt.size.unwrap_or_default())
-                                    .unwrap_or(0)
-                            })
-                            .cloned();
-                        (None, biggest_non_gif)
-                    }
-                    (None, None) => {
-                        panic!("No gif points or non-gif points were given")
+                    (None, non_gif) => {
+                        let maybe_biggest_non_gif = non_gif.and_then(|hs| {
+                            hs.iter()
+                                .max_by_key(|&&id| {
+                                    points_metadata
+                                        .get(&id)
+                                        .map(|(pt, _)| pt.size.unwrap_or_default())
+                                        .unwrap_or(0)
+                                })
+                                .cloned()
+                        });
+                        (None, maybe_biggest_non_gif)
                     }
                 };
             // stage4 return it!
@@ -194,7 +158,46 @@ fn main() -> Result<()> {
                 Some(delete_set.into_iter().collect::<Vec<&Uuid>>()).filter(|v| !v.is_empty()),
             );
         })
+        .collect()
+}
+
+fn main() -> Result<()> {
+    let points_clusters: Vec<HashSet<Uuid>> =
+        serde_pickle::from_slice(&fs::read(r"global_clusters.pkl")?, Default::default())?;
+    let points_metadata = fs::read(r"points_map.bin")?;
+    let points_metadata: HashMap<Uuid, NekoPoint> =
+        bincode::serde::decode_from_slice(&points_metadata, bincode::config::standard())?.0;
+    let s3_file_data = fs::read(r"opendal_list_file_after_rename.bin")?;
+    let s3_file_data: Vec<shared::opendal::Entry> =
+        bincode::serde::decode_from_slice(&s3_file_data, bincode::config::standard())?.0;
+    println!("Successfully loaded data from files.");
+    let s3_pre_map: HashMap<String, String> = s3_file_data
+        .into_iter()
+        .map(|entry| {
+            let key = entry.to_point().to_string();
+            let val = entry.path;
+            (key, val)
+        })
         .collect();
+    println!("S3 map: {:?}", s3_pre_map.len());
+    let points_metadata: HashMap<Uuid, (NekoPoint, NekoPointExt)> = points_metadata
+        .into_iter()
+        .map(|(id, point)| {
+            let file_path = s3_pre_map.get(&point.id.to_string()).unwrap().clone();
+            let ext = NekoPointExt {
+                source: Some(NekoPointExtResource::LocalPath(format!(
+                    "stage9_temp/{}.{}",
+                    point.id,
+                    file_path.rsplit('.').next().unwrap()
+                ))),
+                file_path,
+            };
+            (id, (point, ext))
+        })
+        .collect();
+    println!("S3 metadata: {:?}", points_metadata.len());
+    // Vec<(Option<Vec<KeptTextAnomaliesPic>>, Option<Vec<NeedTriageGifs>>, Option<KeptNonGif>, Option<Vec<OtherNeedDeletePics>>)>
+    let res = extract_clusters(&points_clusters, &points_metadata);
     // TODO:
     let all_kept_text_anomalies: Vec<&Vec<&Uuid>> = res
         .iter()
@@ -204,6 +207,11 @@ fn main() -> Result<()> {
         .iter()
         .filter_map(|(_, opt_gifs, _, _)| opt_gifs.as_ref())
         .collect();
+    let all_need_triage_gifs_flat: Vec<&Uuid> = all_need_triage_gifs
+        .iter()
+        .flat_map(|v| v.iter())
+        .copied()
+        .collect();
     let all_kept_non_gif: Vec<&Uuid> = res.iter().filter_map(|(_, _, opt_ng, _)| *opt_ng).collect();
     println!("Successfully loaded data from files.");
     println!(
@@ -211,6 +219,10 @@ fn main() -> Result<()> {
         all_kept_text_anomalies.len()
     );
     println!("all_need_triage_gifs: {:?}", all_need_triage_gifs.len());
+    println!(
+        "all_need_triage_gifs_flat: {:?}",
+        all_need_triage_gifs_flat.len()
+    );
     println!("all_kept_non_gif: {:?}", all_kept_non_gif.len());
     Ok(())
 }
