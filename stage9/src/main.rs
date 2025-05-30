@@ -1,19 +1,33 @@
+mod clip_worker;
+mod gif_worker;
 mod s3_downloader;
+mod structure;
 
+use crate::clip_worker::ClipWorker;
+use crate::gif_worker::GifWorker;
 use crate::s3_downloader::S3Downloader;
+use crate::structure::{
+    TEXT_SIM_THRESHOLD, TriageGif, TriageGifGroupsClipStageReq, TriageGifGroupsGifStageReq,
+};
 use anyhow::Result;
+use candle_core::DType;
+use candle_transformers::models::clip::ClipConfig;
+use half::bf16;
+use mimalloc::MiMalloc;
 use rayon::prelude::*;
 use shared::cosine_sim::cosine_sim;
 use shared::structure::{NekoPoint, NekoPointExt, NekoPointExtResource};
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::path::PathBuf;
+use std::{env, fs};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 use uuid::Uuid;
 
-const TEXT_SIM_THRESHOLD: f32 = 0.9;
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 fn find_text_anomalies<'a>(
     text_points: &[&'a Uuid],
@@ -47,17 +61,17 @@ fn extract_clusters<'a>(
     points_clusters: &'a [HashSet<Uuid>],
     points_metadata: &'a HashMap<Uuid, (NekoPoint, NekoPointExt)>,
 ) -> Vec<(
-    Option<Vec<&'a Uuid>>,
-    Option<Vec<&'a Uuid>>,
-    Option<&'a Uuid>,
-    Option<Vec<&'a Uuid>>,
+    Option<Vec<&'a Uuid>>, // Option<Vec<KeptTextAnomaliesPic>>
+    Option<Vec<&'a Uuid>>, // Option<Vec<NeedTriageGifs>>
+    Option<&'a Uuid>,      // Option<KeptNonGif>
+    Option<Vec<&'a Uuid>>, // Option<Vec<OtherNeedDeletePics>>
 )> {
     points_clusters
         .par_iter()
         .map(|cursor| {
             let cursor_ref: HashSet<&Uuid> = cursor.iter().collect();
             // stage1
-            let text_points = cursor
+            let mut only_test_uuids: Vec<&Uuid> = cursor
                 .iter()
                 .filter(|id| {
                     points_metadata
@@ -65,15 +79,8 @@ fn extract_clusters<'a>(
                         .map(|(pt, _)| pt.text_info.is_some())
                         .unwrap_or(false)
                 })
-                .fold(None, |opt_vec: Option<Vec<&Uuid>>, id| {
-                    Some(match opt_vec {
-                        Some(mut v) => {
-                            v.push(id);
-                            v
-                        }
-                        None => vec![id],
-                    })
-                });
+                .collect();
+            let text_points = (!only_test_uuids.is_empty()).then_some(only_test_uuids);
             let text_points_size = text_points.as_ref().map_or(0, |v| v.len());
             let text_anomalies = text_points
                 .as_ref()
@@ -123,8 +130,22 @@ fn extract_clusters<'a>(
             // stage3 (Option<HashSet<&NeedTriageGifs>>, Option<&KeptNonGif>)
             let gif_spilt: (Option<HashSet<&Uuid>>, Option<&Uuid>) =
                 match (gif_points_in_left_points, non_gif_points_in_left_points) {
-                    (Some(gif), Some(_none_gif)) => (Some(gif), None),
-                    (Some(gif), None) => (Some(gif), None),
+                    (Some(gif), _) => {
+                        // Is a GIF group considered an orphan group? (i.e., a group containing only one GIF)
+                        match gif.len() {
+                            0 => {
+                                if cfg!(debug_assertions) {
+                                    panic!("Gif points_in_left_points is empty");
+                                }
+                                (Some(gif), None)
+                            }
+                            1 => {
+                                let id = gif.iter().next().cloned();
+                                (None, id)
+                            }
+                            _ => (Some(gif), None),
+                        }
+                    }
                     (None, non_gif) => {
                         let maybe_biggest_non_gif = non_gif.and_then(|hs| {
                             hs.iter()
@@ -179,25 +200,28 @@ fn main() -> Result<()> {
     let points_clusters: Vec<HashSet<Uuid>> =
         serde_pickle::from_slice(&fs::read(r"global_clusters.pkl")?, Default::default())?;
     let points_metadata = fs::read(r"points_map.bin")?;
-    let points_metadata: HashMap<Uuid, NekoPoint> =
+    let points_metadata_ex: HashMap<Uuid, NekoPoint> =
         bincode::serde::decode_from_slice(&points_metadata, bincode::config::standard())?.0;
     let s3_file_data = fs::read(r"opendal_list_file_after_rename.bin")?;
     let s3_file_data: Vec<shared::opendal::Entry> =
         bincode::serde::decode_from_slice(&s3_file_data, bincode::config::standard())?.0;
     tracing::info!("Successfully loaded data from files.");
-    let s3_pre_map: HashMap<String, String> = s3_file_data
+    let s3_pre_map: HashMap<String, shared::opendal::Entry> = s3_file_data
         .into_iter()
         .map(|entry| {
             let key = entry.to_point().to_string();
-            let val = entry.path;
+            let val = entry;
             (key, val)
         })
         .collect();
     tracing::info!("S3 map: {:?}", s3_pre_map.len());
-    let points_metadata: HashMap<Uuid, (NekoPoint, NekoPointExt)> = points_metadata
+    let points_metadata: HashMap<Uuid, (NekoPoint, NekoPointExt)> = points_metadata_ex
         .into_iter()
-        .map(|(id, point)| {
-            let file_path = s3_pre_map.get(&point.id.to_string()).unwrap().clone();
+        .map(|(id, mut point)| {
+            let entry = s3_pre_map.get(&point.id.to_string()).unwrap().clone();
+            let file_path = entry.path;
+            let file_size = entry.metadata.content_length.unwrap_or_default() as usize;
+            point.size = Some(file_size); // unhappy patching...
             let ext = NekoPointExt {
                 source: Some(NekoPointExtResource::LocalPath(format!(
                     "stage9_temp/{}.{}",
@@ -225,6 +249,14 @@ fn main() -> Result<()> {
         .flat_map(|v| v.iter())
         .copied()
         .collect();
+    let all_kept_non_gif_path_map: HashMap<&Uuid, String> = all_need_triage_gifs_flat
+        .iter()
+        .map(|&uuid| (uuid, format!("nekoimg_stage9_gifs/{}.gif", uuid)))
+        .collect();
+    let all_kept_non_gif_path_ref: Vec<(&Uuid, &str)> = all_kept_non_gif_path_map
+        .iter()
+        .map(|(&uuid, path)| (uuid, path.as_str()))
+        .collect();
     let all_kept_non_gif: Vec<&Uuid> = res.iter().filter_map(|(_, _, opt_ng, _)| *opt_ng).collect();
     tracing::info!("Successfully loaded data from files.");
     tracing::info!(
@@ -236,12 +268,55 @@ fn main() -> Result<()> {
         "all_need_triage_gifs_flat: {:?}",
         all_need_triage_gifs_flat.len()
     );
-    tracing::info!("all_kept_non_gif: {:?}", all_kept_non_gif.len());
+    tracing::info!("all_kept_non_gif, len = {:?}", all_kept_non_gif.len());
     // Now, we need download all_need_triage_gifs_flat from S3
     tracing::info!("Starting S3 download for triage GIFs...");
-    let triage_gif_downloader = S3Downloader::new(20, "nekoimg_stage9_gifs", false)?;
+    let triage_gif_downloader = S3Downloader::new(20, false)?;
     let download_result =
-        triage_gif_downloader.download_files(all_need_triage_gifs_flat.as_slice());
-    todo!();
+        triage_gif_downloader.download_files(all_kept_non_gif_path_ref.as_slice());
+    match download_result {
+        Ok(_) => tracing::info!("Successfully downloaded all triage GIFs."),
+        Err(e) => tracing::error!("Failed to download triage GIFs: {}", e),
+    }
+    // Now, Refine GIFs
+    tracing::info!("Starting refining GIFs...");
+    let clip_config = ClipConfig::baai_bge_vl_large();
+    let refine_gif_worker = GifWorker::new(clip_config.image_size as u32); // in
+    let triage_req: TriageGifGroupsGifStageReq = all_need_triage_gifs
+        .iter()
+        .map(|uuid_group| {
+            uuid_group
+                .iter()
+                .map(|&uuid| {
+                    let path = all_kept_non_gif_path_map
+                        .get(uuid)
+                        .expect("Path must be present for GIFs");
+                    let size = points_metadata
+                        .get(uuid)
+                        .and_then(|(p, _)| p.size)
+                        .unwrap_or_default(); // TODO: yes we can unwrap()
+                    TriageGif {
+                        id: uuid,
+                        path,
+                        size,
+                    }
+                })
+                .collect::<Vec<TriageGif>>()
+        })
+        .collect();
+    serde_json::to_string(&triage_req).map(|s| fs::write("triage_gifs_req.json", s))??;
+    let refine_gif_res = refine_gif_worker.process(&triage_req)?;
+    tracing::info!("Refine GIFs result: {:?}", refine_gif_res.len());
+    // Calculate all gif embeddings
+    let clip_res: TriageGifGroupsClipStageReq = refine_gif_res
+        .into_iter()
+        .filter_map(|pair| pair.prepare_clip_gif_pair)
+        .collect();
+    let model_path = PathBuf::from(env::var("CLIP_MODEL_PATH")?);
+    let worker = ClipWorker::new(model_path.to_str().unwrap(), clip_config, DType::BF16, true)?;
+    let clip_res = worker.get_images_embedding_adapted::<bf16>(clip_res)?;
+    let serde_clip_res = serde_json::to_string(&clip_res)?;
+    fs::write("clip_embeddings.json", serde_clip_res)?;
+    tracing::info!("Clip embeddings calculated!");
     Ok(())
 }

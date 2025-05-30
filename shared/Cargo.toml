@@ -7,17 +7,18 @@ edition.workspace = true
 serde.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+half = { workspace = true, optional = true }
 opendal = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
-qdrant-client = {workspace = true, optional = true}
+qdrant-client = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand.workspace = true
 
 [features]
-default = ["shared-structure", "cosine-sim"]
+default = ["shared-structure"]
 shared-structure = []
-cosine-sim = []
+cosine-sim = ["half"]
 opendal-data-compat = []
 opendal-ext = ["opendal", "anyhow"]
 qdrant-ext = ["qdrant-client", "anyhow"]

@@ -7,6 +7,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
+mimalloc = "0.1.46"
 serde = { version = "1.0.219", features = ["derive"] }
 bincode = { version = "2.0.1", features = ["serde"] }
 serde-pickle = "1.2.0"
@@ -23,7 +24,7 @@ infer = "0.19.0"
 walkdir = "2.5.0"
 anyhow = "1.0.98"
 thiserror = "2.0.12"
-clap = { version = "4.5.38", features = ["derive"] }
+clap = { version = "4.5.39", features = ["derive"] }
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing = "0.1.41"
@@ -31,9 +32,12 @@ chrono = { version = "0.4.41", features = ["serde"] }
 bytes = "1.10.1"
 futures = "0.3.31"
 rand = "0.9.1"
+half = { version = "2.6.0", features = ["serde"] }
+criterion = "0.6.0"
+image = { version = "0.25.6", features = ["rayon", "gif"] }
 candle-core = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"]}
 candle-nn = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"]}
-candle-transformers = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"]}
+candle-transformers = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"] }
 
 [profile.release]
 opt-level = 3

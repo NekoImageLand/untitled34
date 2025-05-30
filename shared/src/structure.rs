@@ -7,7 +7,7 @@ pub struct NekoPoint {
     pub id: Uuid,
     pub height: usize,
     pub weight: usize,
-    pub size: Option<usize>,
+    pub size: Option<usize>, // FIXME: always None in stage2
     pub categories: Option<Vec<String>>,
     pub text_info: Option<NekoPointText>,
 }

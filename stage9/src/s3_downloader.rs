@@ -11,13 +11,13 @@ use uuid::Uuid;
 struct Stage9OpenDALOperator {
     op: GenShinOperator,
     worker_num: usize,
-    save_path: String,
     overwrite: bool,
+    // TODO: pre-check
 }
 
 #[derive(Debug)]
 pub struct DownloadErrorFile<'a> {
-    file: &'a Uuid,
+    file_id: &'a Uuid,
     error: String,
 }
 
@@ -38,28 +38,30 @@ impl Deref for Stage9OpenDALOperator {
 }
 
 impl Stage9OpenDALOperator {
-    fn new(worker_num: usize, save_path: &str, overwrite: bool) -> Result<Self, anyhow::Error> {
+    fn new(worker_num: usize, overwrite: bool) -> Result<Self, anyhow::Error> {
         let op = GenShinOperator::new()?;
         Ok(Self {
             op,
             worker_num,
             overwrite,
-            save_path: save_path.to_string(),
         })
     }
 
-    async fn download_files<'a>(&self, file_list: &'a [&'a Uuid]) -> Result<(), DownloadError<'a>> {
+    async fn download_files<'a>(
+        &self,
+        file_list: &'a [(&'a Uuid, &'a str)],
+    ) -> Result<(), DownloadError<'a>> {
         let pb = ProgressBar::new(file_list.len() as u64);
         let style = ProgressStyle::default_bar()
             .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
             .map_err(|e| DownloadError::Internal(e.into()))?;
         pb.set_style(style);
         pb.set_message("Downloading S3 files...");
-        let mut stream = futures::stream::iter(file_list.iter().map(|file| {
+        let mut stream = futures::stream::iter(file_list.iter().map(|&file_tp| {
             let op = self;
             let pb = pb.clone();
             async move {
-                let triage = op.download_file_atomic(file).await;
+                let triage = op.download_file_atomic(file_tp).await;
                 pb.inc(1);
                 triage
             }
@@ -82,21 +84,23 @@ impl Stage9OpenDALOperator {
         }
     }
 
-    async fn download_file_atomic<'a>(&self, file: &'a Uuid) -> Result<(), DownloadErrorFile<'a>> {
-        let file_name = file.to_string();
-        let local_path = format!("{}/{}.gif", self.save_path, file_name);
-        let s3_path = format!("NekoImage/{}.gif", file_name);
-        match fs::try_exists(&local_path).await {
+    async fn download_file_atomic<'a>(
+        &self,
+        file: (&'a Uuid, &'a str),
+    ) -> Result<(), DownloadErrorFile<'a>> {
+        let (file_id, file_name) = file;
+        let s3_path = format!("NekoImage/{}.gif", file_id);
+        match fs::try_exists(&file_name).await {
             Ok(true) if !self.overwrite => {
-                tracing::warn!(
-                    "File {} already exists and overwrite is not allowed",
-                    local_path
-                );
+                // tracing::warn!(
+                //     "File {} already exists and overwrite is not allowed",
+                //     local_path
+                // );
                 return Ok(());
-            },
+            }
             Err(e) => {
                 return Err(DownloadErrorFile {
-                    file,
+                    file_id,
                     error: e.to_string(),
                 });
             }
@@ -108,31 +112,31 @@ impl Stage9OpenDALOperator {
             .read(&s3_path)
             .await
             .map_err(|e| DownloadErrorFile {
-                file,
+                file_id,
                 error: e.to_string(),
             })?;
         while let Some(chunk_res) = StreamExt::next(&mut stream).await {
             let chunk = chunk_res.map_err(|e| DownloadErrorFile {
-                file,
+                file_id,
                 error: e.to_string(),
             })?;
             buffer.extend_from_slice(&chunk);
         }
-        let mut fs_file = fs::File::create(&local_path)
+        let mut fs_file = fs::File::create(&file_name)
             .await
             .map_err(|e| DownloadErrorFile {
-                file,
+                file_id,
                 error: e.to_string(),
             })?;
         fs_file
             .write_all(&buffer)
             .await
             .map_err(|e| DownloadErrorFile {
-                file,
+                file_id,
                 error: e.to_string(),
             })?;
         fs_file.flush().await.map_err(|e| DownloadErrorFile {
-            file,
+            file_id,
             error: e.to_string(),
         })?;
         Ok(())
@@ -145,8 +149,8 @@ pub struct S3Downloader {
 }
 
 impl S3Downloader {
-    pub fn new(worker_num: usize, save_path: &str, overwrite: bool) -> anyhow::Result<Self> {
-        let op = Stage9OpenDALOperator::new(worker_num, save_path, overwrite)?;
+    pub fn new(worker_num: usize, overwrite: bool) -> anyhow::Result<Self> {
+        let op = Stage9OpenDALOperator::new(worker_num, overwrite)?;
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(op.worker_num)
             .enable_all()
@@ -155,7 +159,10 @@ impl S3Downloader {
         Ok(Self { op, runtime })
     }
 
-    pub fn download_files<'a>(&self, file_list: &'a [&'a Uuid]) -> Result<(), DownloadError<'a>> {
+    pub fn download_files<'a>(
+        &self,
+        file_list: &'a [(&'a Uuid, &'a str)],
+    ) -> Result<(), DownloadError<'a>> {
         self.runtime.block_on(self.op.download_files(file_list))
     }
 }
