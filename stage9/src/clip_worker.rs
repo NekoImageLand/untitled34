@@ -211,6 +211,7 @@ impl ClipWorker {
             }
             // Edge case
             if kept.as_ref().is_none() && discarded.as_ref().is_some() {
+                tracing::debug!("Edge case: kept = {:?} discarded = {:?}", kept, discarded);
                 if let Some(mut dis) = discarded.take() {
                     if let Some(max_idx) = dis
                         .iter()

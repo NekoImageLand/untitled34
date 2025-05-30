@@ -291,10 +291,7 @@ fn main() -> Result<()> {
                     let path = all_kept_non_gif_path_map
                         .get(uuid)
                         .expect("Path must be present for GIFs");
-                    let size = points_metadata
-                        .get(uuid)
-                        .and_then(|(p, _)| p.size)
-                        .unwrap_or_default(); // TODO: yes we can unwrap()
+                    let size = points_metadata.get(uuid).and_then(|(p, _)| p.size).unwrap();
                     TriageGif {
                         id: uuid,
                         path,
@@ -306,6 +303,7 @@ fn main() -> Result<()> {
         .collect();
     serde_json::to_string(&triage_req).map(|s| fs::write("triage_gifs_req.json", s))??;
     let refine_gif_res = refine_gif_worker.process(&triage_req)?;
+    serde_json::to_string(&refine_gif_res).map(|s| fs::write("refine_gifs_res.json", s))??;
     tracing::info!("Refine GIFs result: {:?}", refine_gif_res.len());
     // Calculate all gif embeddings
     let clip_res: TriageGifGroupsClipStageReq = refine_gif_res

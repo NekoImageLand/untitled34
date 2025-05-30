@@ -90,11 +90,12 @@ impl GifWorker {
         };
 
         for &TriageGif { id, path, size } in gifs {
-            match self.process_single(path) {
+            match self.process_single(path, false) {
                 Ok(frames) => {
                     try_add_prepare_clip(&mut prepare_clip_gif_id, id, path, size, frames)
                 }
                 Err(GifWorkerError::PoorFrames(_)) => {
+                    tracing::warn!("GIF {} has too few frames, discarding: {}", id, path);
                     try_add_discard_single_frame(&mut discard_single_frame_gif_id, id, path, size)
                 }
                 Err(
@@ -106,23 +107,52 @@ impl GifWorker {
                 }
             }
         }
-        // Check the edge case: are all frame durations in the GIF equal to 1?
+        // Check the edge case: are all frame durations in the GIF < 5?
+        // Control reversal
         if prepare_clip_gif_id.as_ref().is_none() && discard_single_frame_gif_id.as_ref().is_some()
         {
-            if let Some(mut discarded) = discard_single_frame_gif_id.take() {
-                if let Some(max_idx) = discarded
-                    .iter()
-                    .enumerate()
-                    .max_by_key(|&(_, item)| item.2)
-                    .map(|(idx, _)| idx)
-                {
-                    let (id, path, size) = discarded.remove(max_idx);
-                    if let Ok(frames) = self.process_single(path) {
-                        try_add_prepare_clip(&mut prepare_clip_gif_id, id, path, size, frames);
+            if let Some(mut entries) = discard_single_frame_gif_id.take() {
+                if !entries.is_empty() {
+                    let min_idx = entries
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|&(_, &(_, _, size))| size)
+                        .map(|(idx, _)| idx)
+                        .unwrap();
+                    let (discard_id, discard_path, discard_size) = entries.remove(min_idx);
+                    discard_single_frame_gif_id =
+                        Some(vec![(discard_id, discard_path.clone(), discard_size)]);
+
+                    for (id, path, size) in entries {
+                        match self.process_single(path.clone(), true) {
+                            Ok(frames) => {
+                                try_add_prepare_clip(
+                                    &mut prepare_clip_gif_id,
+                                    id,
+                                    path,
+                                    size,
+                                    frames,
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "GIF {} has too few frames even after allowing poor frames,\
+                                     error = {}, discarding: {}",
+                                    id,
+                                    e.to_string(),
+                                    path
+                                );
+                                try_add_discard_single_frame(
+                                    &mut discard_single_frame_gif_id,
+                                    id,
+                                    path,
+                                    size,
+                                );
+                            }
+                        }
                     }
-                }
-                if !discarded.is_empty() {
-                    discard_single_frame_gif_id = Some(discarded);
+                } else {
+                    discard_single_frame_gif_id = Some(entries);
                 }
             }
         }
@@ -157,7 +187,11 @@ impl GifWorker {
         }
     }
 
-    fn process_single(&self, gif_path: &str) -> Result<GifFrames, GifWorkerError> {
+    fn process_single(
+        &self,
+        gif_path: &str,
+        allow_poor_frame: bool,
+    ) -> Result<GifFrames, GifWorkerError> {
         let file = File::open(gif_path).map_err(GifWorkerError::InternalIOError)?;
         let reader =
             GifDecoder::new(BufReader::new(file)).map_err(GifWorkerError::InternalImageError)?;
@@ -167,45 +201,47 @@ impl GifWorker {
             .collect_frames()
             .map_err(GifWorkerError::InternalImageError)?;
         let total = frames.len();
-        match total {
-            n if n < 5 => Err(GifWorkerError::PoorFrames(n)),
-            _ => {
-                let selected_idxs = [0, total / 4, total / 2, total * 3 / 4, total - 1];
-                let picked = frames
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(i, frame)| {
-                        if selected_idxs.contains(&i) {
-                            Some(frame)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                let frames_bytes = picked
-                    .iter()
-                    .map(|frame| {
-                        let buf: Vec<u8> = frame.buffer().to_vec();
-                        let img: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_raw(w, h, buf)
-                            .ok_or_else(|| {
-                                ImageError::Parameter(ParameterError::from_kind(
-                                    ParameterErrorKind::DimensionMismatch,
-                                ))
-                            })?;
-                        let img = DynamicImage::ImageRgba8(img);
-                        Ok::<Vec<u8>, ImageError>(
-                            img.resize_to_fill(
-                                self.extract_hw,
-                                self.extract_hw,
-                                FilterType::Triangle,
-                            )
-                            .to_rgb8()
-                            .into_raw(),
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(frames_bytes)
-            }
-        }
+        // TODO: d63f2ed8-a3ed-54ba-8624-34d1a049735b vs 42fdd210-3755-5613-a922-5a8d10622024 (?)
+        let selected_idxs = match total {
+            n if n < 5 && !allow_poor_frame => Err(GifWorkerError::PoorFrames(n)),
+            n if allow_poor_frame => Ok((0..n).collect::<Vec<_>>()),
+            _ => Ok(Vec::from([
+                0,
+                total / 4,
+                total / 2,
+                total * 3 / 4,
+                total - 1,
+            ])),
+        }?;
+        let picked = frames
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, frame)| {
+                if selected_idxs.contains(&i) {
+                    Some(frame)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let frames_bytes = picked
+            .iter()
+            .map(|frame| {
+                let buf: Vec<u8> = frame.buffer().to_vec();
+                let img: ImageBuffer<Rgba<u8>, _> =
+                    ImageBuffer::from_raw(w, h, buf).ok_or_else(|| {
+                        ImageError::Parameter(ParameterError::from_kind(
+                            ParameterErrorKind::DimensionMismatch,
+                        ))
+                    })?;
+                let img = DynamicImage::ImageRgba8(img);
+                Ok::<Vec<u8>, ImageError>(
+                    img.resize_to_fill(self.extract_hw, self.extract_hw, FilterType::Triangle)
+                        .to_rgb8()
+                        .into_raw(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(frames_bytes)
     }
 }
