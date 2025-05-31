@@ -158,81 +158,92 @@ impl ClipWorker {
             .map_err(|_| CandleError::Msg("Building ProgressStyle failed!".to_string()))?;
         pb.set_style(style);
         pb.set_message("Generating image embeddings...");
-        for group in req {
-            let mut kept: Option<Vec<TriageGif<'a>>> = None;
-            let mut discarded: Option<Vec<TriageGif<'a>>> = None;
-            let frame_lens: Vec<usize> = group.iter().map(|clip| clip.frame.len()).collect();
-            let flatted_slices: Vec<&[u8]> = group
-                .iter()
-                .flat_map(|clip| clip.frame.iter().map(|f| f.as_slice()))
-                .collect();
-            let flatted_embeddings = self.get_images_embedding_batched(&flatted_slices)?;
-            let items: Vec<(TriageGifClip<'a>, Vec<T>)> = frame_lens
-                .into_iter()
-                .scan(0usize, |state, count| {
-                    let start = *state;
-                    *state += count;
-                    Some((start, count))
-                })
-                .zip(group.into_iter())
-                .map(|((start, count), clip)| -> Result<_> {
-                    let tensor = flatted_embeddings.narrow(0, start, count)?.mean(0)?;
-                    let tensor = self.div_l2_norm(&tensor)?;
-                    Ok((clip, tensor.to_vec1::<T>()?))
-                })
-                .collect::<Result<_>>()?;
-            tracing::debug!("Items: {}", items.len());
-            for (clip, vec_i) in items.iter() {
-                let is_similar = items
-                    .iter()
-                    .as_ref()
-                    .into_iter()
-                    .filter(|(other_clip, _)| other_clip.id != clip.id)
-                    .all(|(c, vec_j)| {
-                        let sim = cosine_sim(vec_i, vec_j);
-                        tracing::debug!("Similar clip = {}, {:?} vs {:?}", sim, clip.path, c.path);
-                        sim > IMAGE_SIM_THRESHOLD
-                    });
-                let tg = TriageGif {
-                    id: clip.id,
-                    path: clip.path,
-                    size: clip.size,
-                };
-                match is_similar {
-                    true => match discarded {
-                        Some(ref mut v) => v.push(tg),
-                        None => discarded = Some(vec![tg]),
-                    },
-                    false => match kept {
-                        Some(ref mut v) => v.push(tg),
-                        None => kept = Some(vec![tg]),
-                    },
-                }
-            }
-            // Edge case
-            if kept.as_ref().is_none() && discarded.as_ref().is_some() {
-                tracing::debug!("Edge case: kept = {:?} discarded = {:?}", kept, discarded);
-                if let Some(mut dis) = discarded.take() {
-                    if let Some(max_idx) = dis
+        for group_outer in req {
+            match group_outer {
+                Some(Some(grp)) => {
+                    let mut kept: Option<Vec<TriageGif<'a>>> = None;
+                    let mut discarded: Option<Vec<TriageGif<'a>>> = None;
+                    let frame_lens: Vec<usize> = grp.iter().map(|clip| clip.frame.len()).collect();
+                    let flatted_slices: Vec<&[u8]> = grp
                         .iter()
-                        .enumerate()
-                        .max_by_key(|&(_, item)| item.size)
-                        .map(|(idx, _)| idx)
-                    {
-                        let tg = dis.remove(max_idx);
-                        kept = Some(vec![tg]);
+                        .flat_map(|clip| clip.frame.iter().map(|f| f.as_slice()))
+                        .collect();
+                    let flatted_embeddings = self.get_images_embedding_batched(&flatted_slices)?;
+                    let items: Vec<(TriageGifClip<'a>, Vec<T>)> = frame_lens
+                        .into_iter()
+                        .scan(0usize, |state, count| {
+                            let start = *state;
+                            *state += count;
+                            Some((start, count))
+                        })
+                        .zip(grp.into_iter())
+                        .map(|((start, count), clip)| -> Result<_> {
+                            let tensor = flatted_embeddings.narrow(0, start, count)?.mean(0)?;
+                            let tensor = self.div_l2_norm(&tensor)?;
+                            Ok((clip, tensor.to_vec1::<T>()?))
+                        })
+                        .collect::<Result<_>>()?;
+                    tracing::debug!("Items: {}", items.len());
+                    for (clip, vec_i) in items.iter() {
+                        let is_similar = items
+                            .iter()
+                            .as_ref()
+                            .into_iter()
+                            .filter(|(other_clip, _)| other_clip.id != clip.id)
+                            .all(|(c, vec_j)| {
+                                let sim = cosine_sim(vec_i, vec_j);
+                                tracing::debug!(
+                                    "Similar clip = {}, {:?} vs {:?}",
+                                    sim,
+                                    clip.path,
+                                    c.path
+                                );
+                                sim > IMAGE_SIM_THRESHOLD
+                            });
+                        let tg = TriageGif {
+                            uuid: clip.id,
+                            path: clip.path,
+                            size: clip.size,
+                        };
+                        match is_similar {
+                            true => match discarded {
+                                Some(ref mut v) => v.push(tg),
+                                None => discarded = Some(vec![tg]),
+                            },
+                            false => match kept {
+                                Some(ref mut v) => v.push(tg),
+                                None => kept = Some(vec![tg]),
+                            },
+                        }
                     }
-                    if !dis.is_empty() {
-                        discarded = Some(dis);
+                    // Edge case
+                    if kept.as_ref().is_none() && discarded.as_ref().is_some() {
+                        tracing::debug!("Edge case: kept = {:?} discarded = {:?}", kept, discarded);
+                        if let Some(mut dis) = discarded.take() {
+                            if let Some(max_idx) = dis
+                                .iter()
+                                .enumerate()
+                                .max_by_key(|&(_, item)| item.size)
+                                .map(|(idx, _)| idx)
+                            {
+                                let tg = dis.remove(max_idx);
+                                kept = Some(vec![tg]);
+                            }
+                            if !dis.is_empty() {
+                                discarded = Some(dis);
+                            }
+                        }
                     }
+                    let res = TriageGifGroupsClipStagePair {
+                        kept_gifs: kept,
+                        discard_duplicate_gifs: discarded,
+                    };
+                    final_res.push(Some(Some(res)));
                 }
+                Some(None) => final_res.push(Some(None)),
+                None => final_res.push(None),
             }
             pb.inc(1);
-            let res = TriageGifGroupsClipStagePair {
-                kept_gifs: kept,
-                discard_duplicate_gifs: discarded,
-            };
-            final_res.push(res);
         }
         pb.finish_with_message("All images processed");
         Ok(final_res)
@@ -299,35 +310,39 @@ mod tests {
             "../assets/test_images/bq_1.gif",
         ];
         let gifs = vec![
-            vec![
+            None,
+            Some(vec![
                 TriageGif {
-                    id: uuids.get(0).unwrap(),
+                    uuid: uuids.get(0).unwrap(),
                     path: paths.get(0).unwrap(),
                     size: PathBuf::from(paths.get(0).unwrap()).metadata()?.len() as usize,
                 },
                 TriageGif {
-                    id: uuids.get(1).unwrap(),
+                    uuid: uuids.get(1).unwrap(),
                     path: paths.get(1).unwrap(),
                     size: PathBuf::from(paths.get(1).unwrap()).metadata()?.len() as usize,
                 },
-            ],
-            vec![
+            ]),
+            None,
+            Some(vec![
                 TriageGif {
-                    id: uuids.get(2).unwrap(),
+                    uuid: uuids.get(2).unwrap(),
                     path: paths.get(2).unwrap(),
                     size: PathBuf::from(paths.get(2).unwrap()).metadata()?.len() as usize,
                 },
                 TriageGif {
-                    id: uuids.get(3).unwrap(),
+                    uuid: uuids.get(3).unwrap(),
                     path: paths.get(3).unwrap(),
                     size: PathBuf::from(paths.get(3).unwrap()).metadata()?.len() as usize,
                 },
-            ],
+            ]),
+            None,
+            None,
         ];
         let res = gif_worker.process(&gifs)?;
         let clip_req: TriageGifGroupsClipStageReq = res
             .into_iter()
-            .filter_map(|pair| pair.prepare_clip_gif_pair)
+            .map(|pair| pair.map(|p| p.prepare_clip_gif_pair))
             .collect();
         let clip_res = clip_worker.get_images_embedding_adapted::<f32>(clip_req)?;
         println!("{:?}", clip_res);

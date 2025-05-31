@@ -7,7 +7,8 @@ use crate::clip_worker::ClipWorker;
 use crate::gif_worker::GifWorker;
 use crate::s3_downloader::S3Downloader;
 use crate::structure::{
-    TEXT_SIM_THRESHOLD, TriageGif, TriageGifGroupsClipStageReq, TriageGifGroupsGifStageReq,
+    FinalClassification, TEXT_SIM_THRESHOLD, TriageGif, TriageGifGroupsClipStageReq,
+    TriageGifGroupsGifStageReq,
 };
 use anyhow::Result;
 use candle_core::DType;
@@ -71,7 +72,7 @@ fn extract_clusters<'a>(
         .map(|cursor| {
             let cursor_ref: HashSet<&Uuid> = cursor.iter().collect();
             // stage1
-            let mut only_test_uuids: Vec<&Uuid> = cursor
+            let only_text_uuids: Vec<&Uuid> = cursor
                 .iter()
                 .filter(|id| {
                     points_metadata
@@ -80,7 +81,7 @@ fn extract_clusters<'a>(
                         .unwrap_or(false)
                 })
                 .collect();
-            let text_points = (!only_test_uuids.is_empty()).then_some(only_test_uuids);
+            let text_points = (!only_text_uuids.is_empty()).then_some(only_text_uuids);
             let text_points_size = text_points.as_ref().map_or(0, |v| v.len());
             let text_anomalies = text_points
                 .as_ref()
@@ -235,40 +236,60 @@ fn main() -> Result<()> {
         .collect();
     tracing::info!("S3 metadata: {:?}", points_metadata.len());
     // Vec<(Option<Vec<KeptTextAnomaliesPic>>, Option<Vec<NeedTriageGifs>>, Option<KeptNonGif>, Option<Vec<OtherNeedDeletePics>>)>
-    let res = extract_clusters(&points_clusters, &points_metadata);
-    let all_kept_text_anomalies: Vec<&Vec<&Uuid>> = res
+    let extract_clusters_res = extract_clusters(&points_clusters, &points_metadata);
+    // FIXME: no filter map! (or better solution?)
+    let all_kept_text_anomalies: Vec<Option<&Vec<&Uuid>>> = extract_clusters_res
         .iter()
-        .filter_map(|(opt_text, _, _, _)| opt_text.as_ref())
+        .map(|(opt_text, _, _, _)| opt_text.as_ref())
         .collect();
-    let all_need_triage_gifs: Vec<&Vec<&Uuid>> = res
+    let all_need_triage_gifs: Vec<Option<&Vec<&Uuid>>> = extract_clusters_res
         .iter()
-        .filter_map(|(_, opt_gifs, _, _)| opt_gifs.as_ref())
+        .map(|(_, opt_gifs, _, _)| opt_gifs.as_ref())
         .collect();
+    // flatten!
     let all_need_triage_gifs_flat: Vec<&Uuid> = all_need_triage_gifs
         .iter()
-        .flat_map(|v| v.iter())
-        .copied()
+        .filter_map(|opt_ref| *opt_ref)
+        .flat_map(|vec_of_uuids| vec_of_uuids.iter().copied())
         .collect();
+    // flatten!
     let all_kept_non_gif_path_map: HashMap<&Uuid, String> = all_need_triage_gifs_flat
         .iter()
         .map(|&uuid| (uuid, format!("nekoimg_stage9_gifs/{}.gif", uuid)))
         .collect();
+    // flatten!
     let all_kept_non_gif_path_ref: Vec<(&Uuid, &str)> = all_kept_non_gif_path_map
         .iter()
         .map(|(&uuid, path)| (uuid, path.as_str()))
         .collect();
-    let all_kept_non_gif: Vec<&Uuid> = res.iter().filter_map(|(_, _, opt_ng, _)| *opt_ng).collect();
+    let all_kept_non_gif: Vec<Option<&Uuid>> = extract_clusters_res
+        .iter()
+        .map(|(_, _, opt_ng, _)| *opt_ng)
+        .collect();
     tracing::info!("Successfully loaded data from files.");
     tracing::info!(
         "all_kept_text_anomalies: {:?}",
-        all_kept_text_anomalies.len()
+        all_kept_text_anomalies
+            .iter()
+            .filter(|opt| opt.is_some())
+            .count()
     );
-    tracing::info!("all_need_triage_gifs: {:?}", all_need_triage_gifs.len());
     tracing::info!(
-        "all_need_triage_gifs_flat: {:?}",
+        "all_need_triage_gifs: {:?}",
+        all_need_triage_gifs
+            .iter()
+            .filter(|opt| opt.is_some())
+            .count()
+    );
+    tracing::info!(
+        "all_need_triage_gifs (flattened): {:?}",
         all_need_triage_gifs_flat.len()
     );
-    tracing::info!("all_kept_non_gif, len = {:?}", all_kept_non_gif.len());
+    tracing::info!(
+        "all_kept_non_gif, len = {:?}",
+        all_kept_non_gif.iter().filter(|opt| opt.is_some()).count()
+    );
+
     // Now, we need download all_need_triage_gifs_flat from S3
     tracing::info!("Starting S3 download for triage GIFs...");
     let triage_gif_downloader = S3Downloader::new(20, false)?;
@@ -278,43 +299,95 @@ fn main() -> Result<()> {
         Ok(_) => tracing::info!("Successfully downloaded all triage GIFs."),
         Err(e) => tracing::error!("Failed to download triage GIFs: {}", e),
     }
+
     // Now, Refine GIFs
     tracing::info!("Starting refining GIFs...");
     let clip_config = ClipConfig::baai_bge_vl_large();
     let refine_gif_worker = GifWorker::new(clip_config.image_size as u32); // in
     let triage_req: TriageGifGroupsGifStageReq = all_need_triage_gifs
         .iter()
-        .map(|uuid_group| {
-            uuid_group
-                .iter()
-                .map(|&uuid| {
-                    let path = all_kept_non_gif_path_map
-                        .get(uuid)
-                        .expect("Path must be present for GIFs");
-                    let size = points_metadata.get(uuid).and_then(|(p, _)| p.size).unwrap();
-                    TriageGif {
-                        id: uuid,
-                        path,
-                        size,
-                    }
-                })
-                .collect::<Vec<TriageGif>>()
+        .map(|&opt| {
+            opt.map(|uuids| {
+                uuids
+                    .iter()
+                    .map(|&uuid| {
+                        let path = all_kept_non_gif_path_map
+                            .get(uuid)
+                            .expect("Path must be present for GIFs");
+                        let size = points_metadata.get(uuid).and_then(|(p, _)| p.size).unwrap();
+                        TriageGif { uuid, path, size }
+                    })
+                    .collect::<Vec<TriageGif>>()
+            })
         })
         .collect();
     serde_json::to_string(&triage_req).map(|s| fs::write("triage_gifs_req.json", s))??;
-    let refine_gif_res = refine_gif_worker.process(&triage_req)?;
-    serde_json::to_string(&refine_gif_res).map(|s| fs::write("refine_gifs_res.json", s))??;
+    let mut refine_gif_res = refine_gif_worker.process(&triage_req)?;
+    serde_json::to_string(&refine_gif_res).map(|s| fs::write("triage_gifs_res.json", s))??;
     tracing::info!("Refine GIFs result: {:?}", refine_gif_res.len());
+
     // Calculate all gif embeddings
-    let clip_res: TriageGifGroupsClipStageReq = refine_gif_res
-        .into_iter()
-        .filter_map(|pair| pair.prepare_clip_gif_pair)
+    let clip_req: TriageGifGroupsClipStageReq = refine_gif_res
+        .iter_mut()
+        .map(|opt_pair| opt_pair.as_mut().map(|p| p.prepare_clip_gif_pair.take()))
         .collect();
     let model_path = PathBuf::from(env::var("CLIP_MODEL_PATH")?);
     let worker = ClipWorker::new(model_path.to_str().unwrap(), clip_config, DType::BF16, true)?;
-    let clip_res = worker.get_images_embedding_adapted::<bf16>(clip_res)?;
+    let clip_res = worker.get_images_embedding_adapted::<bf16>(clip_req)?;
     let serde_clip_res = serde_json::to_string(&clip_res)?;
     fs::write("clip_embeddings.json", serde_clip_res)?;
     tracing::info!("Clip embeddings calculated!");
+
+    // final stage
+    let final_classification = extract_clusters_res
+        .iter()
+        .zip(refine_gif_res.iter())
+        .zip(clip_res.iter())
+        .map(|((cluster_tuple, gif_stage_pair), clip_stage_pair)| {
+            let (kept_text_anomalies_group, _, kept_non_gif, other_need_delete_group) =
+                cluster_tuple;
+            FinalClassification {
+                kept_text_anomalies_group,
+                triaged_gif_and_invalid_group: gif_stage_pair
+                    .as_ref()
+                    .map(|pair| &pair.invalid_gif_id)
+                    .unwrap_or(&None),
+                triaged_gif_and_discard_single_frame_group: gif_stage_pair
+                    .as_ref()
+                    .map(|pair| &pair.discard_single_frame_gif_id)
+                    .unwrap_or(&None),
+                // check me
+                triaged_gif_and_then_will_keep_group: clip_stage_pair.as_ref().map(|inner_opt| {
+                    inner_opt
+                        .as_ref()
+                        .and_then(|pair| {
+                            pair.kept_gifs
+                                .as_ref()
+                                .map(|gifs| gifs.iter().map(|gif| gif.uuid).collect::<Vec<&Uuid>>())
+                        })
+                        .unwrap_or_default()
+                }),
+                triaged_gif_and_then_will_delete_group: clip_stage_pair.as_ref().map(|inner_opt| {
+                    inner_opt
+                        .as_ref()
+                        .and_then(|pair| {
+                            pair.discard_duplicate_gifs
+                                .as_ref()
+                                .map(|gifs| gifs.iter().map(|gif| gif.uuid).collect::<Vec<&Uuid>>())
+                        })
+                        .unwrap_or_default()
+                }),
+                kept_non_gif,
+                other_need_delete_group,
+            }
+        })
+        .collect::<Vec<FinalClassification>>();
+    // dump it!
+    serde_json::to_string(&final_classification)
+        .map(|s| fs::write("final_classification.json", s))??;
+    tracing::info!(
+        "Final classification result: {:?}",
+        final_classification.len()
+    );
     Ok(())
 }

@@ -41,13 +41,14 @@ impl GifWorker {
             .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")?;
         pb.set_style(style);
         pb.set_message("Extracting GIF frames...");
-        let results: Vec<TriageGifGroupsGifStagePair<'a>> = gifs
+        let results: Vec<Option<TriageGifGroupsGifStagePair<'a>>> = gifs
             .par_iter()
             .map(|gif_pair| {
                 pb.inc(1);
-                self.process_pair(gif_pair) // Encapsulate the internal errors of GIFs within process_pair
+                // Encapsulate the internal errors of GIFs within process_pair
+                gif_pair.as_ref().map(|p| self.process_pair(p))
             })
-            .collect::<Vec<TriageGifGroupsGifStagePair<'a>>>();
+            .collect();
         pb.finish_with_message("All GIFs processed");
         Ok(results)
     }
@@ -89,7 +90,12 @@ impl GifWorker {
             }
         };
 
-        for &TriageGif { id, path, size } in gifs {
+        for &TriageGif {
+            uuid: id,
+            path,
+            size,
+        } in gifs
+        {
             match self.process_single(path, false) {
                 Ok(frames) => {
                     try_add_prepare_clip(&mut prepare_clip_gif_id, id, path, size, frames)
@@ -121,10 +127,10 @@ impl GifWorker {
                         .unwrap();
                     let (discard_id, discard_path, discard_size) = entries.remove(min_idx);
                     discard_single_frame_gif_id =
-                        Some(vec![(discard_id, discard_path.clone(), discard_size)]);
+                        Some(vec![(discard_id, discard_path, discard_size)]);
 
                     for (id, path, size) in entries {
-                        match self.process_single(path.clone(), true) {
+                        match self.process_single(path, true) {
                             Ok(frames) => {
                                 try_add_prepare_clip(
                                     &mut prepare_clip_gif_id,
