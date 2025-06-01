@@ -35,6 +35,7 @@ rand = "0.9.1"
 half = { version = "2.6.0", features = ["serde"] }
 criterion = "0.6.0"
 image = { version = "0.25.6", features = ["rayon", "gif"] }
+image_hasher = "3.0.0"
 candle-core = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"]}
 candle-nn = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"]}
 candle-transformers = {git = "https://github.com/NekoImageLand/candle", branch = "clip/baai", features = ["cuda", "cudnn"] }

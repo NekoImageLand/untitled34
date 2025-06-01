@@ -30,17 +30,11 @@ use uuid::Uuid;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-// TODO: jenny 5a21ca1a-0c16-5099-8488-5e4218a974a2 with 24b40206-80b0-5a80-b80b-5f3e8a151495: 0.6178548
+// TODO: jenny 5a21ca1a-0c16-5099-8488-5e4218a974a2 with 24b40206-80b0-5a80-b80b-5f3e8a151495: 0.6178548 (fixed)
 fn find_text_anomalies_clusters<'a>(
     text_points: &[&'a Uuid],
     points_metadata: &HashMap<Uuid, (NekoPoint, NekoPointExt)>,
 ) -> Vec<Vec<&'a Uuid>> {
-    // let mut debug = false;
-    // let u = Uuid::parse_str("332caaaa-53e1-553b-818f-5d07bf7f1432").unwrap();
-    // if text_points.iter().any(|cl| *cl == &u) {
-    //     tracing::warn!("Found a cluster with the UUID 332caaaa-53e1-553b-818f-5d07bf7f1432");
-    //     debug = true;
-    // }
     let mut id_vec_pairs = Vec::with_capacity(text_points.len());
     for &id in text_points {
         if let Some((pt, _)) = points_metadata.get(id) {
@@ -59,26 +53,12 @@ fn find_text_anomalies_clusters<'a>(
         for cl in clusters.iter_mut() {
             let ok = cl.iter().all(|&other_id| {
                 let vec_j = vec_map.get(&other_id).unwrap();
-                // if debug {
-                //     tracing::debug!(
-                //         "Comparing {} ({:?}) with {} ({:?}): {}",
-                //         id,
-                //         points_metadata
-                //             .get(id)
-                //             .and_then(|(pt, _)| pt.text_info.as_ref().map(|t| &t.text)),
-                //         other_id,
-                //         points_metadata
-                //             .get(other_id)
-                //             .and_then(|(pt, _)| pt.text_info.as_ref().map(|t| &t.text)),
-                //         cosine_sim(vec_i, vec_j)
-                //     );
-                // }
                 cosine_sim(vec_i, vec_j) > TEXT_SIM_THRESHOLD
             });
             if ok {
                 cl.push(id);
                 placed = true;
-                break;
+                break; // TODO: no break for edge case? (/cc @jj)
             }
         }
         if !placed {
@@ -141,7 +121,7 @@ fn extract_clusters<'a>(
                     );
                 }
             }
-            // FIXME: jenny 2a168dc6-b0c7-5e41-be01-82c99d717450
+            // FIXME: jenny 2a168dc6-b0c7-5e41-be01-82c99d717450 (fixed)
             // FIXME: Perhaps we should remove all text groups?
             let text_anomalies_set: HashSet<&Uuid> = text_anomalies
                 .as_deref()
@@ -188,22 +168,26 @@ fn extract_clusters<'a>(
             // stage3 (Option<HashSet<&NeedTriageGifs>>, Option<&KeptNonGif>)
             let gif_spilt: (Option<HashSet<&Uuid>>, Option<&Uuid>) =
                 match (gif_points_in_left_points, non_gif_points_in_left_points) {
-                    (Some(gif), _) => {
-                        // Is a GIF group considered an orphan group? (i.e., a group containing only one GIF)
-                        match gif.len() {
-                            0 => {
-                                if cfg!(debug_assertions) {
-                                    panic!("Gif points_in_left_points is empty");
-                                }
-                                (Some(gif), None)
-                            }
-                            1 => {
-                                let id = gif.iter().next().cloned();
-                                (None, id)
-                            }
-                            _ => (Some(gif), None),
-                        }
-                    }
+                    (Some(gif), _) => (Some(gif), None),
+                    // We no longer make this judgment because the GIF group may contain
+                    // invalid GIFs (such as single frames). This part of the logic can be
+                    // completely left to `gif_worker` to judge.
+                    // {
+                    //     // Is a GIF group considered an orphan group? (i.e., a group containing only one GIF)
+                    //     match gif.len() {
+                    //         0 => {
+                    //             if cfg!(debug_assertions) {
+                    //                 panic!("Gif points_in_left_points is empty");
+                    //             }
+                    //             (Some(gif), None)
+                    //         }
+                    //         1 => {
+                    //             let id = gif.iter().next().cloned();
+                    //             (None, id)
+                    //         }
+                    //         _ => (Some(gif), None),
+                    //     }
+                    // }
                     (None, non_gif) => {
                         let maybe_biggest_non_gif = non_gif.and_then(|hs| {
                             hs.iter()
@@ -246,11 +230,15 @@ fn extract_clusters<'a>(
 }
 
 fn main() -> Result<()> {
-    let stdout = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new("info"));
+    let stdout = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new(
+        env::var("STDOUT_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+    ));
     let file_appender = RollingFileAppender::new(Rotation::HOURLY, "logs", "stage9.log");
     let file = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
-        .with_filter(EnvFilter::new("debug"));
+        .with_filter(EnvFilter::new(
+            env::var("FILE_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+        ));
     tracing_subscriber::registry()
         .with(stdout)
         .with(file)
@@ -409,9 +397,13 @@ fn main() -> Result<()> {
                     .as_ref()
                     .map(|pair| &pair.invalid_gif_id)
                     .unwrap_or(&None),
-                triaged_gif_and_discard_single_frame_group: gif_stage_pair
+                triaged_gif_and_discard_same_frame_group: gif_stage_pair
                     .as_ref()
-                    .map(|pair| &pair.discard_single_frame_gif_id)
+                    .map(|pair| &pair.discard_same_frame_gif_id)
+                    .unwrap_or(&None),
+                triaged_gif_and_discard_poor_frame_group: gif_stage_pair
+                    .as_ref()
+                    .map(|pair| &pair.discard_poor_frame_gif_id)
                     .unwrap_or(&None),
                 // check me
                 triaged_gif_and_then_will_keep_group: clip_stage_pair.as_ref().map(|inner_opt| {

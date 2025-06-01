@@ -25,6 +25,7 @@ candle-transformers.workspace = true
 half.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+image_hasher.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

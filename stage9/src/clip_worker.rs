@@ -11,7 +11,6 @@ use rayon::prelude::*;
 use shared::cosine_sim::{Cosine, cosine_sim};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use uuid::Uuid;
 
 pub trait ClipWorkerInput: Sync + Sized {
     fn to_raw(&self, size: usize) -> anyhow::Result<Vec<u8>>;
@@ -168,7 +167,7 @@ impl ClipWorker {
                 if ok {
                     cl.push(&it);
                     placed = true;
-                    break;
+                    break; // TODO: no break for edge case? (/cc @jj)
                 }
             }
             if !placed {
@@ -258,20 +257,21 @@ impl ClipWorker {
                     // Edge case
                     if kept.as_ref().is_none() && discarded.as_ref().is_some() {
                         tracing::debug!("Edge case: kept = {:?} discarded = {:?}", kept, discarded);
-                        if let Some(mut dis) = discarded.take() {
-                            if let Some(max_idx) = dis
-                                .iter()
-                                .enumerate()
-                                .max_by_key(|&(_, item)| item.size)
-                                .map(|(idx, _)| idx)
-                            {
-                                let tg = dis.remove(max_idx);
-                                kept = Some(vec![tg]);
-                            }
-                            if !dis.is_empty() {
-                                discarded = Some(dis);
-                            }
-                        }
+                        // TODO: do we need this ???
+                        // if let Some(mut dis) = discarded.take() {
+                        //     if let Some(max_idx) = dis
+                        //         .iter()
+                        //         .enumerate()
+                        //         .max_by_key(|&(_, item)| item.size)
+                        //         .map(|(idx, _)| idx)
+                        //     {
+                        //         let tg = dis.remove(max_idx);
+                        //         kept = Some(vec![tg]);
+                        //     }
+                        //     if !dis.is_empty() {
+                        //         discarded = Some(dis);
+                        //     }
+                        // }
                     }
                     let res = TriageGifGroupsClipStagePair {
                         kept_gifs: kept,

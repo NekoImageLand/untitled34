@@ -46,7 +46,8 @@ pub type TriageGifClipPair<'a> = Vec<TriageGifClip<'a>>;
 #[derive(Debug, Serialize)]
 pub struct TriageGifGroupsGifStagePair<'a> {
     pub invalid_gif_id: Option<(Vec<&'a Uuid>, Vec<String>)>, // (uuid, FailedReason)
-    pub discard_single_frame_gif_id: Option<Vec<&'a Uuid>>,
+    pub discard_same_frame_gif_id: Option<Vec<&'a Uuid>>,
+    pub discard_poor_frame_gif_id: Option<Vec<&'a Uuid>>,
     pub prepare_clip_gif_pair: Option<TriageGifClipPair<'a>>,
 }
 
@@ -68,7 +69,8 @@ pub struct FinalClassification<'a> {
     pub kept_text_anomalies_group: &'a Option<Vec<&'a Uuid>>,
     /// NeedTriageGifs region
     pub triaged_gif_and_invalid_group: &'a Option<(Vec<&'a Uuid>, Vec<String>)>,
-    pub triaged_gif_and_discard_single_frame_group: &'a Option<Vec<&'a Uuid>>,
+    pub triaged_gif_and_discard_same_frame_group: &'a Option<Vec<&'a Uuid>>,
+    pub triaged_gif_and_discard_poor_frame_group: &'a Option<Vec<&'a Uuid>>,
     pub triaged_gif_and_then_will_keep_group: Option<Vec<&'a Uuid>>,
     pub triaged_gif_and_then_will_delete_group: Option<Vec<&'a Uuid>>,
     /// KeptNonGif region
