@@ -6,7 +6,7 @@ use uuid::Uuid;
 const THRESHOLD: f32 = 0.985;
 
 fn cluster_chunk(ids: &[Uuid], sim_map: &HashMap<Uuid, HashMap<Uuid, f32>>) -> Vec<HashSet<Uuid>> {
-    let mut clusters: Vec<HashSet<Uuid>> = Vec::new();
+    let mut clusters: Vec<HashSet<Uuid>> = Vec::new(); // a b c d e
     for &id in ids {
         let mut placed = false;
         for cl in clusters.iter_mut() {

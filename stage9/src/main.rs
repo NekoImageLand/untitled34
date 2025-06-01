@@ -30,10 +30,17 @@ use uuid::Uuid;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-fn find_text_anomalies<'a>(
+// TODO: jenny 5a21ca1a-0c16-5099-8488-5e4218a974a2 with 24b40206-80b0-5a80-b80b-5f3e8a151495: 0.6178548
+fn find_text_anomalies_clusters<'a>(
     text_points: &[&'a Uuid],
     points_metadata: &HashMap<Uuid, (NekoPoint, NekoPointExt)>,
-) -> Option<Vec<&'a Uuid>> {
+) -> Vec<Vec<&'a Uuid>> {
+    // let mut debug = false;
+    // let u = Uuid::parse_str("332caaaa-53e1-553b-818f-5d07bf7f1432").unwrap();
+    // if text_points.iter().any(|cl| *cl == &u) {
+    //     tracing::warn!("Found a cluster with the UUID 332caaaa-53e1-553b-818f-5d07bf7f1432");
+    //     debug = true;
+    // }
     let mut id_vec_pairs = Vec::with_capacity(text_points.len());
     for &id in text_points {
         if let Some((pt, _)) = points_metadata.get(id) {
@@ -42,20 +49,43 @@ fn find_text_anomalies<'a>(
             }
         }
     }
-    let mut anomalies = None;
+    let mut vec_map: HashMap<&Uuid, &[f32]> = HashMap::with_capacity(id_vec_pairs.len());
+    for &(ref id, vec_i) in &id_vec_pairs {
+        vec_map.insert(id, vec_i);
+    }
+    let mut clusters: Vec<Vec<&Uuid>> = Vec::new();
     for &(id, vec_i) in &id_vec_pairs {
-        let is_anomaly = id_vec_pairs
-            .iter()
-            .filter(|&&(other_id, _)| other_id != id)
-            .all(|&(_, vec_j)| cosine_sim(vec_i, vec_j) < TEXT_SIM_THRESHOLD);
-        if is_anomaly {
-            if anomalies.is_none() {
-                anomalies = Some(Vec::new());
+        let mut placed = false;
+        for cl in clusters.iter_mut() {
+            let ok = cl.iter().all(|&other_id| {
+                let vec_j = vec_map.get(&other_id).unwrap();
+                // if debug {
+                //     tracing::debug!(
+                //         "Comparing {} ({:?}) with {} ({:?}): {}",
+                //         id,
+                //         points_metadata
+                //             .get(id)
+                //             .and_then(|(pt, _)| pt.text_info.as_ref().map(|t| &t.text)),
+                //         other_id,
+                //         points_metadata
+                //             .get(other_id)
+                //             .and_then(|(pt, _)| pt.text_info.as_ref().map(|t| &t.text)),
+                //         cosine_sim(vec_i, vec_j)
+                //     );
+                // }
+                cosine_sim(vec_i, vec_j) > TEXT_SIM_THRESHOLD
+            });
+            if ok {
+                cl.push(id);
+                placed = true;
+                break;
             }
-            anomalies.as_mut().unwrap().push(id);
+        }
+        if !placed {
+            clusters.push(vec![id]);
         }
     }
-    anomalies
+    clusters
 }
 
 fn extract_clusters<'a>(
@@ -83,9 +113,36 @@ fn extract_clusters<'a>(
                 .collect();
             let text_points = (!only_text_uuids.is_empty()).then_some(only_text_uuids);
             let text_points_size = text_points.as_ref().map_or(0, |v| v.len());
-            let text_anomalies = text_points
+            let text_anomalies_clusters = text_points
                 .as_ref()
-                .and_then(|tp| find_text_anomalies(tp, points_metadata));
+                .map(|tp| find_text_anomalies_clusters(tp, points_metadata));
+            let mut text_anomalies: Option<Vec<&Uuid>> = None;
+            let mut text_non_anomalies: Option<Vec<&Uuid>> = None; // TODO: keep it...?
+            if let Some(clusters) = text_anomalies_clusters {
+                text_anomalies = Some(Vec::with_capacity(clusters.len()));
+                text_non_anomalies = Some(Vec::with_capacity(text_points_size - clusters.len()));
+                for cluster in clusters.iter() {
+                    let (max_idx, &max_uuid) = cluster
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|&(_, &id)| {
+                            points_metadata
+                                .get(id)
+                                .and_then(|(pt, _)| pt.size)
+                                .unwrap_or(0)
+                        })
+                        .unwrap();
+                    text_anomalies.as_ref().unwrap().push(max_uuid);
+                    text_non_anomalies.as_ref().unwrap().extend(
+                        cluster
+                            .iter()
+                            .take(max_idx)
+                            .chain(cluster.iter().skip(max_idx + 1)),
+                    );
+                }
+            }
+            // FIXME: jenny 2a168dc6-b0c7-5e41-be01-82c99d717450
+            // FIXME: Perhaps we should remove all text groups?
             let text_anomalies_set: HashSet<&Uuid> = text_anomalies
                 .as_deref()
                 .unwrap_or(&[])
@@ -93,7 +150,7 @@ fn extract_clusters<'a>(
                 .copied()
                 .collect();
             let non_text_anomalies_set: HashSet<&Uuid> = cursor_ref
-                .difference(&text_anomalies_set)
+                .difference(&text_anomalies_set) // FIXME: aka only_text_uuids here?
                 .copied()
                 .collect();
             if text_points_size == cursor.len() && text_points == text_anomalies {
@@ -193,7 +250,7 @@ fn main() -> Result<()> {
     let file_appender = RollingFileAppender::new(Rotation::HOURLY, "logs", "stage9.log");
     let file = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
-        .with_filter(EnvFilter::new("info"));
+        .with_filter(EnvFilter::new("debug"));
     tracing_subscriber::registry()
         .with(stdout)
         .with(file)
@@ -203,7 +260,7 @@ fn main() -> Result<()> {
     let points_metadata = fs::read(r"points_map.bin")?;
     let points_metadata_ex: HashMap<Uuid, NekoPoint> =
         bincode::serde::decode_from_slice(&points_metadata, bincode::config::standard())?.0;
-    let s3_file_data = fs::read(r"opendal_list_file_after_rename.bin")?;
+    let s3_file_data = fs::read(r"opendal_list_file_after_rename_simplify.bin")?;
     let s3_file_data: Vec<shared::opendal::Entry> =
         bincode::serde::decode_from_slice(&s3_file_data, bincode::config::standard())?.0;
     tracing::info!("Successfully loaded data from files.");
@@ -237,7 +294,6 @@ fn main() -> Result<()> {
     tracing::info!("S3 metadata: {:?}", points_metadata.len());
     // Vec<(Option<Vec<KeptTextAnomaliesPic>>, Option<Vec<NeedTriageGifs>>, Option<KeptNonGif>, Option<Vec<OtherNeedDeletePics>>)>
     let extract_clusters_res = extract_clusters(&points_clusters, &points_metadata);
-    // FIXME: no filter map! (or better solution?)
     let all_kept_text_anomalies: Vec<Option<&Vec<&Uuid>>> = extract_clusters_res
         .iter()
         .map(|(opt_text, _, _, _)| opt_text.as_ref())
@@ -301,6 +357,7 @@ fn main() -> Result<()> {
     }
 
     // Now, Refine GIFs
+    // TODO: boki fefe7ce9-6965-541a-b103-a56364fb7ea8 vs bbdc9c8d-b333-54b5-b438-15fda974be7e
     tracing::info!("Starting refining GIFs...");
     let clip_config = ClipConfig::baai_bge_vl_large();
     let refine_gif_worker = GifWorker::new(clip_config.image_size as u32); // in

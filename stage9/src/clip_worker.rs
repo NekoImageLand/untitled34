@@ -1,6 +1,6 @@
 use crate::structure::{
-    IMAGE_SIM_THRESHOLD, TriageGif, TriageGifClip, TriageGifGroupsClipStagePair,
-    TriageGifGroupsClipStageReq, TriageGifGroupsClipStageRes,
+    IMAGE_SIM_THRESHOLD, TEXT_SIM_THRESHOLD, TriageGif, TriageGifClip,
+    TriageGifGroupsClipStagePair, TriageGifGroupsClipStageReq, TriageGifGroupsClipStageRes,
 };
 use candle_core::{D, DType, Device, Error as CandleError, Result, Tensor, WithDType};
 use candle_nn::VarBuilder;
@@ -9,7 +9,9 @@ use image::{ImageReader, imageops};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use shared::cosine_sim::{Cosine, cosine_sim};
+use std::collections::HashMap;
 use std::fmt::Debug;
+use uuid::Uuid;
 
 pub trait ClipWorkerInput: Sync + Sized {
     fn to_raw(&self, size: usize) -> anyhow::Result<Vec<u8>>;
@@ -144,6 +146,38 @@ impl ClipWorker {
         self.div_l2_norm(&features)
     }
 
+    fn find_gif_embedding_clusters<'a, 'b, T>(
+        &self,
+        items: &'b [(TriageGifClip<'a>, Vec<T>)],
+    ) -> Vec<Vec<&'b TriageGifClip<'a>>>
+    where
+        T: WithDType + Cosine + Debug,
+    {
+        let mut id_map = HashMap::with_capacity(items.len());
+        for it in items {
+            id_map.insert(it.0.id, it);
+        }
+        let mut clusters: Vec<Vec<&TriageGifClip<'a>>> = Vec::new();
+        for (it, vec_i) in items {
+            let mut placed = false;
+            for cl in clusters.iter_mut() {
+                let ok = cl.iter().all(|c| {
+                    let vec_j = &id_map.get(&c.id).unwrap().1;
+                    cosine_sim(vec_i, vec_j) > IMAGE_SIM_THRESHOLD
+                });
+                if ok {
+                    cl.push(&it);
+                    placed = true;
+                    break;
+                }
+            }
+            if !placed {
+                clusters.push(vec![&it]);
+            }
+        }
+        clusters
+    }
+
     pub fn get_images_embedding_adapted<'a, T>(
         &self,
         req: TriageGifGroupsClipStageReq<'a>,
@@ -184,37 +218,42 @@ impl ClipWorker {
                         })
                         .collect::<Result<_>>()?;
                     tracing::debug!("Items: {}", items.len());
-                    for (clip, vec_i) in items.iter() {
-                        let is_similar = items
+                    // FIXME:
+                    let clusters: Vec<Vec<&TriageGifClip<'a>>> =
+                        self.find_gif_embedding_clusters(&items);
+                    tracing::debug!("Clusters: {}", clusters.len());
+                    let mut max_clips = Vec::with_capacity(clusters.len());
+                    let mut other_clips = Vec::with_capacity(items.len() - clusters.len());
+                    for cluster in clusters.iter() {
+                        let (max_idx, &tgc) = cluster
                             .iter()
-                            .as_ref()
-                            .into_iter()
-                            .filter(|(other_clip, _)| other_clip.id != clip.id)
-                            .all(|(c, vec_j)| {
-                                let sim = cosine_sim(vec_i, vec_j);
-                                tracing::debug!(
-                                    "Similar clip = {}, {:?} vs {:?}",
-                                    sim,
-                                    clip.path,
-                                    c.path
-                                );
-                                sim > IMAGE_SIM_THRESHOLD
-                            });
-                        let tg = TriageGif {
-                            uuid: clip.id,
-                            path: clip.path,
-                            size: clip.size,
-                        };
-                        match is_similar {
-                            true => match discarded {
-                                Some(ref mut v) => v.push(tg),
-                                None => discarded = Some(vec![tg]),
-                            },
-                            false => match kept {
-                                Some(ref mut v) => v.push(tg),
-                                None => kept = Some(vec![tg]),
-                            },
-                        }
+                            .enumerate()
+                            .max_by_key(|&(_, clip)| clip.size)
+                            .unwrap();
+                        max_clips.push(TriageGif {
+                            uuid: tgc.id,
+                            path: tgc.path,
+                            size: tgc.size,
+                        });
+                        other_clips.extend(
+                            cluster
+                                .iter()
+                                .take(max_idx)
+                                .chain(cluster.iter().skip(max_idx + 1))
+                                .map(|&clip| TriageGif {
+                                    uuid: clip.id,
+                                    path: clip.path,
+                                    size: clip.size,
+                                }),
+                        );
+                    }
+                    match kept {
+                        Some(ref mut v) => v.extend(max_clips),
+                        None => kept = Some(max_clips),
+                    }
+                    match discarded {
+                        Some(ref mut v) => v.extend(other_clips),
+                        None => discarded = Some(other_clips),
                     }
                     // Edge case
                     if kept.as_ref().is_none() && discarded.as_ref().is_some() {
