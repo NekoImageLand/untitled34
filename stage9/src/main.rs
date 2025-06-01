@@ -132,8 +132,8 @@ fn extract_clusters<'a>(
                                 .unwrap_or(0)
                         })
                         .unwrap();
-                    text_anomalies.as_ref().unwrap().push(max_uuid);
-                    text_non_anomalies.as_ref().unwrap().extend(
+                    text_anomalies.as_mut().unwrap().push(max_uuid);
+                    text_non_anomalies.as_mut().unwrap().extend(
                         cluster
                             .iter()
                             .take(max_idx)
