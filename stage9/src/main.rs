@@ -133,8 +133,8 @@ fn extract_clusters<'a>(
                 .difference(&text_anomalies_set) // FIXME: aka only_text_uuids here?
                 .copied()
                 .collect();
-            if text_points_size == cursor.len() && text_points == text_anomalies {
-                // println!("All points in the current cluster have textual dissimilarity, skip!");
+            if text_points_size == cursor.len() {
+                // tracing::debug!("All points in the current cluster have textual dissimilarity, skip!");
                 return (
                     text_anomalies,
                     None,
@@ -168,26 +168,11 @@ fn extract_clusters<'a>(
             // stage3 (Option<HashSet<&NeedTriageGifs>>, Option<&KeptNonGif>)
             let gif_spilt: (Option<HashSet<&Uuid>>, Option<&Uuid>) =
                 match (gif_points_in_left_points, non_gif_points_in_left_points) {
+                    // TODO: should not have non_gif: 50e469f6-e5d8-5d39-aa78-f8e7301014a2 (fixed)
                     (Some(gif), _) => (Some(gif), None),
                     // We no longer make this judgment because the GIF group may contain
                     // invalid GIFs (such as single frames). This part of the logic can be
                     // completely left to `gif_worker` to judge.
-                    // {
-                    //     // Is a GIF group considered an orphan group? (i.e., a group containing only one GIF)
-                    //     match gif.len() {
-                    //         0 => {
-                    //             if cfg!(debug_assertions) {
-                    //                 panic!("Gif points_in_left_points is empty");
-                    //             }
-                    //             (Some(gif), None)
-                    //         }
-                    //         1 => {
-                    //             let id = gif.iter().next().cloned();
-                    //             (None, id)
-                    //         }
-                    //         _ => (Some(gif), None),
-                    //     }
-                    // }
                     (None, non_gif) => {
                         let maybe_biggest_non_gif = non_gif.and_then(|hs| {
                             hs.iter()
@@ -400,10 +385,6 @@ fn main() -> Result<()> {
                 triaged_gif_and_discard_same_frame_group: gif_stage_pair
                     .as_ref()
                     .map(|pair| &pair.discard_same_frame_gif_id)
-                    .unwrap_or(&None),
-                triaged_gif_and_discard_poor_frame_group: gif_stage_pair
-                    .as_ref()
-                    .map(|pair| &pair.discard_poor_frame_gif_id)
                     .unwrap_or(&None),
                 // check me
                 triaged_gif_and_then_will_keep_group: clip_stage_pair.as_ref().map(|inner_opt| {
