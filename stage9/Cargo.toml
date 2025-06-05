@@ -30,9 +30,23 @@ image_hasher.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 
+[features]
+default = []
+cuda = [
+    "candle-core/cuda",
+    "candle-nn/cuda",
+    "candle-transformers/cuda"
+]
+cudnn = [
+    "candle-core/cudnn",
+    "candle-nn/cudnn",
+    "candle-transformers/cudnn",
+]
+
 [lib]
 name = "stage9"
 path = "src/lib.rs"
 
 [[bench]]
 name = "clip_bench"
+harness = false

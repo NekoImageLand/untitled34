@@ -18,17 +18,17 @@ fn bench_clip(c: &mut Criterion) {
         let pics: Vec<_> = (0..batch_size)
             .map(|i| format!("../assets/test_images/bsn_{}.jpg", i % 2))
             .collect();
-        group.bench_with_input(
-            BenchmarkId::new("get_images_embedding_batched", batch_size),
-            &pics,
-            |b, pics| {
-                b.iter(|| {
-                    worker
-                        .get_images_embedding_batched(pics.map(|s| &s))
-                        .unwrap();
-                });
-            },
-        );
+        // group.bench_with_input(
+        //     BenchmarkId::new("get_images_embedding_batched", batch_size),
+        //     &pics,
+        //     |b, pics| {
+        //         b.iter(|| {
+        //             worker
+        //                 .get_images_embedding_batched(pics.map(|s| &s))
+        //                 .unwrap();
+        //         });
+        //     },
+        // );
         // group.bench_with_input(
         //     BenchmarkId::new("get_images_embedding", batch_size),
         //     &pics,

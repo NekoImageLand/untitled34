@@ -58,9 +58,12 @@ impl ClipWorker {
         tensor_type: DType,
         use_gpu: bool,
     ) -> anyhow::Result<Self> {
-        let device = match use_gpu {
-            true => Device::new_cuda(0)?,
-            false => Device::Cpu,
+        let device = if use_gpu && cfg!(feature = "cuda") {
+            Device::new_cuda(0)?
+        } else if use_gpu && !cfg!(feature = "cuda") {
+            panic!("CUDA feature is not enabled. Please enable it in Cargo.toml.");
+        } else {
+            Device::Cpu
         };
         let var_builder = unsafe {
             VarBuilder::from_mmaped_safetensors(

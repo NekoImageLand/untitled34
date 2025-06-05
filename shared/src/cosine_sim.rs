@@ -1,4 +1,5 @@
 use half::bf16;
+#[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
 pub trait Cosine {
@@ -27,6 +28,7 @@ pub fn cosine_sim<T: Cosine>(a: &[T], b: &[T]) -> f32 {
 }
 
 #[inline(always)]
+#[cfg(target_arch = "x86_64")]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn hsum256(v: __m256) -> f32 {
     let hi = _mm256_extractf128_ps::<1>(v);
@@ -58,6 +60,7 @@ fn common_cosine_sim_f32(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn cosine_sim_f32_avx2(a: &[f32], b: &[f32]) -> f32 {
@@ -105,6 +108,7 @@ fn common_cosine_sim_bf16(a: &[bf16], b: &[bf16]) -> f32 {
     common_cosine_sim_f32(&a_f, &b_f)
 }
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn cosine_sim_bf16_avx2(a: &[bf16], b: &[bf16]) -> f32 {
@@ -204,6 +208,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_cosine_sim_random_against_cpu() {
         if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
             let mut rng = StdRng::seed_from_u64(42);
@@ -225,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_cosine_sim_random_fallback() {
         let mut rng = StdRng::seed_from_u64(123);
         for _ in 0..5 {
@@ -237,6 +243,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_cosine_sim_bf16_small_vectors() {
         let a = [
             bf16::from_f32(1.0),
@@ -277,6 +284,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_random_768_dimensional_vectors() {
         let mut rng = rng();
         let a: Vec<bf16> = (0..DIM)
