@@ -11,14 +11,28 @@ pub trait Cosine {
 impl Cosine for f32 {
     #[inline]
     fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
-        cosine_sim_f32(a, b)
+        #[cfg(target_arch = "x86_64")]
+        {
+            cosine_sim_f32(a, b)
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            common_cosine_sim_f32(a, b)
+        }
     }
 }
 
 impl Cosine for bf16 {
     #[inline]
     fn cosine_sim(a: &[bf16], b: &[bf16]) -> f32 {
-        cosine_sim_bf16(a, b)
+        #[cfg(target_arch = "x86_64")]
+        {
+            cosine_sim_bf16(a, b)
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            common_cosine_sim_bf16(a, b)
+        }
     }
 }
 
@@ -42,6 +56,7 @@ unsafe fn hsum256(v: __m256) -> f32 {
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[allow(unsafe_op_in_unsafe_fn)]
 fn cosine_sim_f32(a: &[f32], b: &[f32]) -> f32 {
     if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
@@ -92,6 +107,7 @@ unsafe fn cosine_sim_f32_avx2(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[inline]
+#[cfg(target_arch = "x86_64")]
 #[allow(unsafe_op_in_unsafe_fn)]
 fn cosine_sim_bf16(a: &[bf16], b: &[bf16]) -> f32 {
     if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
