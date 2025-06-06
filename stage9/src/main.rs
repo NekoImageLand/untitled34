@@ -1,15 +1,10 @@
 mod clip_worker;
 mod gif_worker;
 mod s3_downloader;
-mod structure;
 
 use crate::clip_worker::ClipWorker;
 use crate::gif_worker::GifWorker;
 use crate::s3_downloader::S3Downloader;
-use crate::structure::{
-    FinalClassification, TEXT_SIM_THRESHOLD, TriageGif, TriageGifGroupsClipStageReq,
-    TriageGifGroupsGifStageReq,
-};
 use anyhow::Result;
 use candle_core::DType;
 use candle_transformers::models::clip::ClipConfig;
@@ -17,6 +12,10 @@ use half::bf16;
 use mimalloc::MiMalloc;
 use rayon::prelude::*;
 use shared::cosine_sim::cosine_sim;
+use shared::structure::{
+    FinalClassification, TEXT_SIM_THRESHOLD, TriageGif, TriageGifGroupsClipStageReq,
+    TriageGifGroupsGifStageReq,
+};
 use shared::structure::{NekoPoint, NekoPointExt, NekoPointExtResource};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -370,45 +369,43 @@ fn main() -> Result<()> {
 
     // final stage
     let final_classification = extract_clusters_res
-        .iter()
-        .zip(refine_gif_res.iter())
-        .zip(clip_res.iter())
-        .map(|((cluster_tuple, gif_stage_pair), clip_stage_pair)| {
+        .into_iter()
+        .zip(refine_gif_res.into_iter())
+        .zip(clip_res.into_iter())
+        .map(|((mut cluster_tuple, gif_stage_pair), clip_stage_pair)| {
             let (kept_text_anomalies_group, _, kept_non_gif, other_need_delete_group) =
-                cluster_tuple;
+                &mut cluster_tuple;
             FinalClassification {
-                kept_text_anomalies_group,
+                kept_text_anomalies_group: kept_text_anomalies_group
+                    .take()
+                    .map(|vec| vec.into_iter().copied().collect()),
                 triaged_gif_and_invalid_group: gif_stage_pair
                     .as_ref()
-                    .map(|pair| &pair.invalid_gif_id)
-                    .unwrap_or(&None),
+                    .and_then(|pair| pair.invalid_gif_id.as_ref())
+                    .map(|(uuids, strings)| {
+                        (
+                            uuids.into_iter().map(|uuid| **uuid).collect(),
+                            strings.clone(),
+                        )
+                    }),
                 triaged_gif_and_discard_same_frame_group: gif_stage_pair
                     .as_ref()
-                    .map(|pair| &pair.discard_same_frame_gif_id)
-                    .unwrap_or(&None),
-                // check me
-                triaged_gif_and_then_will_keep_group: clip_stage_pair.as_ref().map(|inner_opt| {
-                    inner_opt
-                        .as_ref()
-                        .and_then(|pair| {
-                            pair.kept_gifs
-                                .as_ref()
-                                .map(|gifs| gifs.iter().map(|gif| gif.uuid).collect::<Vec<&Uuid>>())
-                        })
-                        .unwrap_or_default()
-                }),
-                triaged_gif_and_then_will_delete_group: clip_stage_pair.as_ref().map(|inner_opt| {
-                    inner_opt
-                        .as_ref()
-                        .and_then(|pair| {
-                            pair.discard_duplicate_gifs
-                                .as_ref()
-                                .map(|gifs| gifs.iter().map(|gif| gif.uuid).collect::<Vec<&Uuid>>())
-                        })
-                        .unwrap_or_default()
-                }),
-                kept_non_gif,
-                other_need_delete_group,
+                    .and_then(|pair| pair.discard_same_frame_gif_id.as_ref())
+                    .map(|vec| vec.into_iter().map(|uuid| **uuid).collect()),
+                triaged_gif_and_then_will_keep_group: clip_stage_pair
+                    .as_ref()
+                    .and_then(|inner_opt| inner_opt.as_ref())
+                    .and_then(|pair| pair.kept_gifs.as_ref())
+                    .map(|gifs| gifs.iter().map(|gif| *gif.uuid).collect()),
+                triaged_gif_and_then_will_delete_group: clip_stage_pair
+                    .as_ref()
+                    .and_then(|inner_opt| inner_opt.as_ref())
+                    .and_then(|pair| pair.discard_duplicate_gifs.as_ref())
+                    .map(|gifs| gifs.iter().map(|gif| *gif.uuid).collect()),
+                kept_non_gif: kept_non_gif.take().copied(),
+                other_need_delete_group: other_need_delete_group
+                    .take()
+                    .map(|vec| vec.into_iter().copied().collect()),
             }
         })
         .collect::<Vec<FinalClassification>>();

@@ -1,7 +1,3 @@
-use crate::structure::{
-    GifFrames, TriageGif, TriageGifClip, TriageGifGroupsGifStagePair, TriageGifGroupsGifStageReq,
-    TriageGifGroupsGifStageRes, TriageGifPair,
-};
 use anyhow::Result;
 use image::codecs::gif::GifDecoder;
 use image::error::{ParameterError, ParameterErrorKind};
@@ -10,6 +6,10 @@ use image::{AnimationDecoder, DynamicImage, ImageBuffer, ImageDecoder, ImageErro
 use image_hasher::{Hasher, HasherConfig, ImageHash};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use shared::structure::{
+    GifFrames, TriageGif, TriageGifClip, TriageGifGroupsGifStagePair, TriageGifGroupsGifStageReq,
+    TriageGifGroupsGifStageRes, TriageGifPair,
+};
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;

@@ -3642,6 +3642,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "stage11"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "chrono",
+ "clap",
+ "futures",
+ "indicatif",
+ "qdrant-client",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "stage2"
 version = "0.1.0"
 dependencies = [
