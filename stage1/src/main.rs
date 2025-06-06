@@ -64,6 +64,7 @@ pub fn main() {
         r"C:\Users\pk5ls\Desktop\Projects\NekoImages\NekoImageGallery\merge\img_sim_clean.pkl",
     )
     .unwrap();
+    // TODO:
     let sim_map: HashMap<Uuid, HashMap<Uuid, f32>> =
         serde_pickle::from_slice(&data, Default::default()).unwrap();
 
