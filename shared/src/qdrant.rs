@@ -1,8 +1,10 @@
 use qdrant_client::config::CompressionEncoding;
-use qdrant_client::{Qdrant, QdrantBuilder};
+use qdrant_client::{Qdrant, QdrantBuilder, QdrantError};
 use std::env;
 use std::ops::Deref;
 use std::time::Duration;
+
+pub type QdrantResult<T> = Result<T, QdrantError>; // TODO: extend it using thiserror
 
 pub struct GenShinQdrantClient(Qdrant);
 

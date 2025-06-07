@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use plotters::prelude::*;
+use shared::point_explorer::PointExplorer;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use uuid::Uuid;
@@ -23,11 +24,11 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let data = std::fs::read(
-        r"C:\Users\pk5ls\Desktop\Projects\NekoImages\NekoImageGallery\merge\img_sim_clean.pkl",
-    )?;
-    let sim_map: HashMap<Uuid, HashMap<Uuid, f32>> =
-        serde_pickle::from_slice(&data, Default::default())?;
+    let data = std::fs::read(r"img_sim_clean_new.bin")?;
+    let sim_explorer: PointExplorer =
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())
+            .expect("deserialize")
+            .0;
 
     if args.ids.len() < 2 {
         eprintln!("need at least two ids");
@@ -54,12 +55,7 @@ fn main() -> Result<()> {
         for j in i + 1..args.ids.len() {
             let id1 = args.ids[i];
             let id2 = args.ids[j];
-            let sim = sim_map
-                .get(&id1)
-                .and_then(|m| m.get(&id2))
-                .copied()
-                .or_else(|| sim_map.get(&id2).and_then(|m| m.get(&id1)).copied())
-                .unwrap_or(0.0);
+            let sim = sim_explorer.get_similarity((&id1, &id2))?;
             let (x1, y1) = positions[&id1];
             let (x2, y2) = positions[&id2];
             let low = sim < args.threshold;

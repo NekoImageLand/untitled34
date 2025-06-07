@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serde-pickle.workspace = true
+shared = {path = "../shared", features = ["point-explorer"]}
+bincode.workspace = true
 uuid.workspace = true
 plotters.workspace = true
 clap.workspace = true

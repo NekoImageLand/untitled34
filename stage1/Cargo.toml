@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+shared = {path = "../shared", features = ["point-explorer"]}
 serde-pickle.workspace = true
+bincode.workspace = true
 uuid.workspace = true
 indicatif.workspace = true
 rayon.workspace = true

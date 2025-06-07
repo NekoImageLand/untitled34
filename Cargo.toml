@@ -9,6 +9,8 @@ edition = "2024"
 [workspace.dependencies]
 mimalloc = "0.1.46"
 serde = { version = "1.0.219", features = ["derive"] }
+serde_with = { version = "3.12.0", features = ["macros"] }
+approx = "0.5.1"
 bincode = { version = "2.0.1", features = ["serde"] }
 serde-pickle = "1.2.0"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }

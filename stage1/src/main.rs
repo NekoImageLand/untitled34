@@ -1,23 +1,19 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use shared::point_explorer::PointExplorer;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 const THRESHOLD: f32 = 0.985;
 
-fn cluster_chunk(ids: &[Uuid], sim_map: &HashMap<Uuid, HashMap<Uuid, f32>>) -> Vec<HashSet<Uuid>> {
+fn cluster_chunk(ids: &[Uuid], sim_map: &PointExplorer) -> Vec<HashSet<Uuid>> {
     let mut clusters: Vec<HashSet<Uuid>> = Vec::new(); // a b c d e
     for &id in ids {
         let mut placed = false;
         for cl in clusters.iter_mut() {
             let ok = cl.iter().all(|&other| {
-                let s = sim_map
-                    .get(&id)
-                    .and_then(|m| m.get(&other))
-                    .copied()
-                    .or_else(|| sim_map.get(&other).and_then(|m| m.get(&id)).copied())
-                    .unwrap_or(0.0);
-                s > THRESHOLD
+                let sim = sim_map.get_similarity((&id, &other)).unwrap();
+                sim > THRESHOLD
             });
             if ok {
                 cl.insert(id);
@@ -34,21 +30,12 @@ fn cluster_chunk(ids: &[Uuid], sim_map: &HashMap<Uuid, HashMap<Uuid, f32>>) -> V
     clusters
 }
 
-fn merge_cluster(
-    local: HashSet<Uuid>,
-    global: &mut Vec<HashSet<Uuid>>,
-    sim_map: &HashMap<Uuid, HashMap<Uuid, f32>>,
-) {
+fn merge_cluster(local: HashSet<Uuid>, global: &mut Vec<HashSet<Uuid>>, sim_map: &PointExplorer) {
     for g in global.iter_mut() {
         let ok = local.iter().all(|&i| {
             g.iter().all(|&j| {
-                let s = sim_map
-                    .get(&i)
-                    .and_then(|m| m.get(&j))
-                    .copied()
-                    .or_else(|| sim_map.get(&j).and_then(|m| m.get(&i)).copied())
-                    .unwrap_or(0.0);
-                s > THRESHOLD
+                let sim = sim_map.get_similarity((&i, &j)).unwrap();
+                sim > THRESHOLD
             })
         });
         if ok {
@@ -60,15 +47,14 @@ fn merge_cluster(
 }
 
 pub fn main() {
-    let data = std::fs::read(
-        r"C:\Users\pk5ls\Desktop\Projects\NekoImages\NekoImageGallery\merge\img_sim_clean.pkl",
-    )
-    .unwrap();
+    let data = std::fs::read(r"img_sim_clean_new.bin").unwrap();
     // TODO:
-    let sim_map: HashMap<Uuid, HashMap<Uuid, f32>> =
-        serde_pickle::from_slice(&data, Default::default()).unwrap();
+    let sim_explorer: PointExplorer =
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())
+            .expect("deserialize")
+            .0;
 
-    let all_ids: Vec<Uuid> = sim_map.keys().copied().collect();
+    let all_ids: Vec<Uuid> = sim_explorer.iter().map(|id| *id).collect();
     let chunk_size = 20000;
     let chunks: Vec<&[Uuid]> = all_ids.chunks(chunk_size).collect();
 
@@ -84,7 +70,7 @@ pub fn main() {
     let local_vec: Vec<Vec<HashSet<Uuid>>> = chunks
         .par_iter()
         .map(|&chunk| {
-            let res = cluster_chunk(chunk, &sim_map);
+            let res = cluster_chunk(chunk, &sim_explorer);
             pb_local.inc(1);
             res
         })
@@ -98,7 +84,7 @@ pub fn main() {
     pb_merge.set_style(style);
     pb_merge.set_message("Global merging");
     for lc in all_local_clusters {
-        merge_cluster(lc, &mut global_clusters, &sim_map);
+        merge_cluster(lc, &mut global_clusters, &sim_explorer);
         pb_merge.inc(1);
     }
     pb_merge.finish_with_message("Global merging done");

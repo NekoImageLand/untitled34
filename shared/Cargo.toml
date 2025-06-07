@@ -7,12 +7,16 @@ edition.workspace = true
 serde.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+serde_with = {workspace = true, optional = true}
+thiserror = {workspace = true, optional = true}
 half = { workspace = true, optional = true }
 opendal = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 qdrant-client = { workspace = true, optional = true }
 
 [dev-dependencies]
+approx.workspace = true
+bincode.workspace = true
 rand.workspace = true
 
 [features]
@@ -22,3 +26,4 @@ cosine-sim = ["half"]
 opendal-data-compat = []
 opendal-ext = ["opendal", "anyhow"]
 qdrant-ext = ["qdrant-client", "anyhow"]
+point-explorer = ["cosine-sim", "thiserror", "serde_with"]

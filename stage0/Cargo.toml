@@ -4,18 +4,16 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-shared = {path = "../shared", features = ["qdrant-ext"]}
+shared = {path = "../shared", features = ["qdrant-ext", "point-explorer"]}
+mimalloc.workspace = true
 tokio.workspace = true
 qdrant-client.workspace = true
 anyhow.workspace = true
-serde_json.workspace = true
 clap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
-futures.workspace = true
 indicatif.workspace = true
 serde.workspace = true
-chrono.workspace = true
 uuid.workspace = true
 bincode.workspace = true
