@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["shared", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "stage6", "stage7", "stage8", "stage9", "stage10", "stage11"]
+members = ["shared", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "stage6", "stage7", "stage8", "stage9", "stage10", "stage11", "stage12", "stage13", "stage14", "stage15"]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,14 +8,21 @@ edition = "2024"
 
 [workspace.dependencies]
 mimalloc = "0.1.46"
+indexmap = { version = "2.9.0", features = ["serde", "rayon"] }
+petgraph = { version = "0.8.2", features = ["serde", "rayon"] }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_with = { version = "3.12.0", features = ["macros"] }
-approx = "0.5.1"
+serde_with = { version = "3.12.0", features = ["macros", "indexmap_2"] }
+sha1 = "0.11.0-rc.0"
+hex = "0.4.3"
 bincode = { version = "2.0.1", features = ["serde"] }
 serde-pickle = "1.2.0"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 indicatif = { version = "0.17.11", features = ["rayon", "tokio"] }
 rayon = "1.10.0"
+pacmap = "0.2.6"
+petal-clustering = "0.12.0"
+petal-neighbors = "0.13.0"
+ndarray = { version = "0.16.1", features = ["serde"] }
 qdrant-client = "1.14.0"
 tokio = { version = "1.45.1", features = ["rt", "rt-multi-thread", "macros"] }
 prost = "0.13.5"
@@ -34,6 +41,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 bytes = "1.10.1"
 futures = "0.3.31"
 rand = "0.9.1"
+rand_pcg = "0.9.0"
 half = { version = "2.6.0", features = ["serde"] }
 criterion = "0.6.0"
 image = { version = "0.25.6", features = ["rayon", "gif"] }
@@ -41,6 +49,10 @@ image_hasher = "3.0.0"
 candle-core = { git = "https://github.com/NekoImageLand/candle", branch = "clip/baai" }
 candle-nn = { git = "https://github.com/NekoImageLand/candle", branch = "clip/baai" }
 candle-transformers = { git = "https://github.com/NekoImageLand/candle", branch = "clip/baai" }
+pyo3 = { version = "0.25.0", features = ["extension-module", "macros", "uuid"] }
+
+[patch.crates-io]
+intel-mkl-src = { git = "https://github.com/NekoImageLand/intel-mkl-src", branch = "fix/pkgbuild-with-debug" }
 
 [profile.release]
 opt-level = 3

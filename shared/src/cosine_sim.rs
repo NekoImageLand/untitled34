@@ -176,7 +176,7 @@ unsafe fn cosine_sim_bf16_avx2(a: &[bf16], b: &[bf16]) -> f32 {
 mod tests {
     use super::*;
     use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng, rng, thread_rng};
+    use rand::{Rng, SeedableRng, rng};
 
     const DIM: usize = 768;
     const EPS: f32 = 1e-3;

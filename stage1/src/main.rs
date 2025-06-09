@@ -1,7 +1,7 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use shared::point_explorer::PointExplorer;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 const THRESHOLD: f32 = 0.985;
@@ -54,9 +54,10 @@ pub fn main() {
             .expect("deserialize")
             .0;
 
-    let all_ids: Vec<Uuid> = sim_explorer.iter().map(|id| *id).collect();
+    let all_ids: Vec<Uuid> = sim_explorer.iter().map(|(id, p)| *id).collect();
     let chunk_size = 20000;
     let chunks: Vec<&[Uuid]> = all_ids.chunks(chunk_size).collect();
+    println!("Total {} ids, {} chunks", all_ids.len(), chunks.len());
 
     let m = MultiProgress::new();
     let pb_local = m.add(ProgressBar::new(chunks.len() as u64));
@@ -89,7 +90,7 @@ pub fn main() {
     }
     pb_merge.finish_with_message("Global merging done");
 
-    let mut saved_file = std::fs::File::create(r"../global_clusters.pkl").unwrap();
+    let mut saved_file = std::fs::File::create(r"global_clusters_new_0607.pkl").unwrap();
     serde_pickle::to_writer(&mut saved_file, &global_clusters, Default::default()).unwrap();
 
     println!("最终得到 {} 个簇", global_clusters.len());

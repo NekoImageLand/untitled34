@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 shared = {path = "../shared", features = ["point-explorer"]}
+petgraph.workspace = true
 bincode.workspace = true
 uuid.workspace = true
 plotters.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "stage14"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared", features = ["point-explorer"] }
+petgraph.workspace = true
+bincode.workspace = true
+indicatif.workspace = true
+uuid.workspace = true
+anyhow.workspace = true

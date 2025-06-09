@@ -6,6 +6,9 @@ edition = "2024"
 [dependencies]
 shared = {path = "../shared", features = ["point-explorer"]}
 serde-pickle.workspace = true
+petal-clustering.workspace = true
+petal-neighbors.workspace = true
+ndarray.workspace = true
 bincode.workspace = true
 uuid.workspace = true
 indicatif.workspace = true

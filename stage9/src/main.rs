@@ -249,16 +249,10 @@ fn main() -> Result<()> {
         .into_iter()
         .map(|(id, mut point)| {
             let entry = s3_pre_map.get(&point.id.to_string()).unwrap().clone();
-            let file_path = entry.path;
             let file_size = entry.metadata.content_length.unwrap_or_default() as usize;
             point.size = Some(file_size); // unhappy patching...
             let ext = NekoPointExt {
-                source: Some(NekoPointExtResource::LocalPath(format!(
-                    "stage9_temp/{}.{}",
-                    point.id,
-                    file_path.rsplit('.').next().unwrap()
-                ))),
-                file_path,
+                source: Some(NekoPointExtResource::Local(entry.path)),
             };
             (id, (point, ext))
         })

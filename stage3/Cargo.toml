@@ -9,3 +9,4 @@ bincode.workspace = true
 serde-pickle.workspace = true
 uuid.workspace = true
 plotters.workspace = true
+clap.workspace = true

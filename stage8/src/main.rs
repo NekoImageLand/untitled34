@@ -179,11 +179,14 @@ async fn main() -> anyhow::Result<()> {
     let rename_ops = need_rename_filelist
         .into_iter()
         .filter_map(|file| {
-            let left = file.path.split('.').next()?;
-            let point_id = left.split('/').last()?;
+            let src = PathBuf::from(&file.path);
+            let mut dst = PathBuf::new();
+            let point_id = src.file_stem()?.to_str()?;
+            dst.push(point_id);
+            dst.set_extension(&file.expected_ext);
             Some(RenameOp {
                 point_id: point_id.to_owned(),
-                dst: format!("{}.{}", left, file.expected_ext.as_str()),
+                dst: dst.to_string_lossy().to_string(),
                 src: file.path,
                 target_ext: file.expected_ext,
             })

@@ -1,14 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
+use petgraph::unionfind::UnionFind;
 use plotters::prelude::*;
-use shared::point_explorer::PointExplorer;
+use shared::point_explorer::{PointExplorer, PointExplorerBuilder};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use uuid::Uuid;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(long)]
+    #[arg(long, default_value = "img_sim_clean_new.pkl")]
     sim_map: String,
     #[arg(long, default_value = "similarity.png")]
     output: String,
@@ -23,13 +24,9 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-
-    let data = std::fs::read(r"img_sim_clean_new.bin")?;
-    let sim_explorer: PointExplorer =
-        bincode::serde::decode_from_slice(&data, bincode::config::standard())
-            .expect("deserialize")
-            .0;
-
+    let sim_explorer = PointExplorerBuilder::new()
+        .data_path(&args.sim_map)
+        .build()?;
     if args.ids.len() < 2 {
         eprintln!("need at least two ids");
         return Ok(());
@@ -50,6 +47,7 @@ fn main() -> Result<()> {
     let root = BitMapBackend::new(&args.output, (size, size)).into_drawing_area();
     root.fill(&WHITE)?;
 
+    let mut union_find = UnionFind::new_empty();
     // draw edges
     for i in 0..args.ids.len() {
         for j in i + 1..args.ids.len() {
@@ -62,6 +60,8 @@ fn main() -> Result<()> {
             let color = if low { RED } else { BLUE };
             if low {
                 println!("low similarity: {id1} <-> {id2}: {sim:.4}");
+            } else {
+                union_find.union(i, j);
             }
             root.draw(&PathElement::new(
                 vec![(x1, y1), (x2, y2)],
@@ -80,6 +80,10 @@ fn main() -> Result<()> {
             ("sans-serif", 15).into_font(),
         ))?;
     }
+
+    // visualize union-find components
+    let v_union_find = union_find.into_labeling();
+    println!("v_union_find: {:#?}", v_union_find);
 
     root.present()?;
     println!("saved visualization to {}", args.output);

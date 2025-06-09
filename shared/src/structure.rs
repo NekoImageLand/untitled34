@@ -1,9 +1,12 @@
+#[cfg(feature = "pyo3")]
+use pyo3::pyclass;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// P1
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "pyo3", pyclass(get_all))]
 pub struct NekoPoint {
     pub id: Uuid,
     pub height: usize,
@@ -14,6 +17,7 @@ pub struct NekoPoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "pyo3", pyclass(get_all))]
 pub struct NekoPointText {
     pub text: String,
     pub text_vector: Vec<f32>, // 768 Dimension
@@ -21,22 +25,27 @@ pub struct NekoPointText {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NekoPointExt {
-    pub file_path: String,
     pub source: Option<NekoPointExtResource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NekoPointExtResource {
-    LocalPath(String),
+    None,
+    Local(String),
     Blob(Vec<u8>),
 }
 
 impl NekoPointExt {
     #[inline]
     pub fn ext(&self) -> &str {
-        self.file_path.rsplit('.').next().unwrap()
+        match self.source.as_ref() {
+            Some(NekoPointExtResource::Local(path)) => path.rsplit('.').next().unwrap(),
+            _ => todo!(),
+        }
     }
 }
+
+// patch uuid
 
 /// P2
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -58,8 +67,8 @@ pub enum TriageFile {
 }
 
 /// P3
-pub const TEXT_SIM_THRESHOLD: f32 = 0.9;
-pub const IMAGE_SIM_THRESHOLD: f32 = 0.985; // TODO: ?
+pub static TEXT_SIM_THRESHOLD: f32 = 0.9;
+pub static IMAGE_SIM_THRESHOLD: f32 = 0.985; // TODO: ?
 
 #[derive(Debug, Serialize)]
 pub struct TriageGif<'a> {

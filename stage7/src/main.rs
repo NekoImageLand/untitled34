@@ -231,7 +231,7 @@ async fn main() -> Result<()> {
     if let Some(tasks) = failed_tasks {
         let save_path = format!("{}_failed.json", cli.save_result_prefix);
         tracing::info!("Saved failed tasks to {}", &save_path);
-        let file = std::fs::File::create(save_path)?;
+        let file = fs::File::create(save_path)?;
         serde_json::to_writer(file, &tasks)?;
     } else {
         tracing::info!("All tasks succeeded");

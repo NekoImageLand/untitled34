@@ -1,0 +1,13 @@
+[package]
+name = "stage13"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared", features = ["point-explorer"] }
+chrono.workspace = true
+anyhow.workspace = true
+serde-pickle.workspace = true
+petal-clustering.workspace = true
+petal-neighbors.workspace = true
+ndarray.workspace = true

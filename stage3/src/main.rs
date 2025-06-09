@@ -1,30 +1,42 @@
+use clap::Parser;
 use plotters::prelude::*;
 use shared::structure::NekoPoint;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use uuid::Uuid;
 
+#[derive(Parser)]
+#[clap(author, version, about = "Cluster analysis with optional UUID lookup")]
+struct Args {
+    #[clap(short, long, default_value = "clusters.bin")]
+    clusters: PathBuf,
+    #[clap(short = 'm', long, default_value = "points_map.bin")]
+    points_map: PathBuf,
+    #[clap(short, long)]
+    uuid: Option<Uuid>,
+    #[clap(short, long, default_value = "cluster_size_distribution.png")]
+    output: String,
+}
+
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let global_clusters_data = std::fs::read(r"global_clusters.pkl")?;
+    let args = Args::parse();
+    // Load clusters
+    let cluster_data = std::fs::read(&args.clusters)?;
     let global_clusters: Vec<HashSet<Uuid>> =
-        serde_pickle::from_slice(&global_clusters_data, Default::default())?;
-
-    let pf = std::fs::read(r"points_map.bin")?;
-    let metadata: (HashMap<Uuid, NekoPoint>, _) =
-        bincode::serde::decode_from_slice(&pf, bincode::config::standard())?;
-    let _metadata_map = metadata.0;
-
+        bincode::serde::decode_from_slice(&cluster_data, bincode::config::standard())?.0;
     println!("Loaded global clusters, count = {}", global_clusters.len());
 
+    // Compute sizes of clusters with more than one member
     let mut sizes: Vec<usize> = global_clusters
         .iter()
-        .map(|cluster| cluster.len())
-        .filter(|&l| l > 1)
+        .map(HashSet::len)
+        .filter(|&len| len > 1)
         .collect();
     sizes.sort_unstable();
-    let count = sizes.len();
 
-    let min = *sizes.first().unwrap();
-    let max = *sizes.last().unwrap();
+    let count = sizes.len();
+    let min = *sizes.first().unwrap_or(&0);
+    let max = *sizes.last().unwrap_or(&0);
     let sum: usize = sizes.iter().sum();
     let mean = sum as f64 / count as f64;
     let median = if count % 2 == 0 {
@@ -32,13 +44,12 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         sizes[count / 2] as f64
     };
-
-    // Mode calculation
-    let mut freq: HashMap<usize, usize> = HashMap::new();
-    for &size in &sizes {
-        *freq.entry(size).or_insert(0) += 1;
-    }
-    let mode = freq
+    let mode = sizes
+        .iter()
+        .fold(HashMap::new(), |mut acc, &v| {
+            *acc.entry(v).or_insert(0) += 1;
+            acc
+        })
         .into_iter()
         .max_by_key(|&(_, freq)| freq)
         .map(|(size, _)| size)
@@ -51,15 +62,16 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Mean   = {:.2}", mean);
     println!("  Median = {:.2}", median);
     println!("  Mode   = {}", mode);
+    println!("Sizes vector: {:?}", sizes);
 
-    plot_distribution(&sizes, "cluster_size_distribution.png")?;
-    println!("Saved size distribution plot to cluster_size_distribution.png");
+    // Plot distribution
+    plot_distribution(&sizes, &args.output)?;
+    println!("Saved size distribution plot to {}", args.output);
 
     Ok(())
 }
 
 fn plot_distribution(sizes: &[usize], output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // Count frequencies per size
     let mut freq_map: HashMap<usize, usize> = HashMap::new();
     for &size in sizes {
         *freq_map.entry(size).or_insert(0) += 1;
@@ -67,9 +79,9 @@ fn plot_distribution(sizes: &[usize], output_path: &str) -> Result<(), Box<dyn s
     let mut data: Vec<(usize, usize)> = freq_map.into_iter().collect();
     data.sort_by_key(|&(size, _)| size);
 
-    // Prepare drawing area
-    let max_size = data.iter().map(|&(s, _)| s).max().unwrap();
-    let max_count = data.iter().map(|&(_, c)| c).max().unwrap();
+    let max_size = data.iter().map(|&(s, _)| s).max().unwrap_or(0);
+    let max_count = data.iter().map(|&(_, c)| c).max().unwrap_or(0);
+
     let root = BitMapBackend::new(output_path, (1024, 768)).into_drawing_area();
     root.fill(&WHITE)?;
 
@@ -81,7 +93,6 @@ fn plot_distribution(sizes: &[usize], output_path: &str) -> Result<(), Box<dyn s
         .build_cartesian_2d(0usize..max_size, 0usize..(max_count + 5))?;
 
     chart.configure_mesh().draw()?;
-
     chart.draw_series(
         data.iter()
             .map(|&(size, count)| Rectangle::new([(size, 0), (size + 1, count)], BLUE.filled())),

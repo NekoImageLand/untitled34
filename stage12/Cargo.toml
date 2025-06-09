@@ -1,0 +1,19 @@
+[package]
+name = "stage12"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared", features = ["point-explorer"] }
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+anyhow.workspace = true
+serde-pickle.workspace = true
+pacmap.workspace = true
+ndarray.workspace = true
+
+[features]
+simsimd = ["pacmap/simsimd"]
+intel-mkl-static = ["pacmap/intel-mkl-static"]

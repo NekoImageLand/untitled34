@@ -15,5 +15,5 @@ tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 indicatif.workspace = true
 serde.workspace = true
+serde-pickle.workspace = true
 uuid.workspace = true
-bincode.workspace = true
