@@ -1,12 +1,12 @@
-#[cfg(feature = "pyo3")]
-use pyo3::pyclass;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+#[cfg(feature = "pyo3")]
+use {pyo3::pyclass, pyo3_stub_gen::derive::gen_stub_pyclass};
 
 /// P1
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
+#[cfg_attr(feature = "pyo3", gen_stub_pyclass, pyclass(get_all))]
 pub struct NekoPoint {
     pub id: Uuid,
     pub height: usize,
@@ -17,7 +17,7 @@ pub struct NekoPoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "pyo3", pyclass(get_all))]
+#[cfg_attr(feature = "pyo3", gen_stub_pyclass, pyclass(get_all))]
 pub struct NekoPointText {
     pub text: String,
     pub text_vector: Vec<f32>, // 768 Dimension

@@ -33,6 +33,8 @@ struct Args {
     copy: bool,
     #[arg(long = "move", group = "Op", action = ArgAction::SetTrue, help = "Move files")]
     r#move: bool,
+    #[arg(long, default_value = "false", help = "Overwrite existing files")]
+    overwrite: bool,
     #[arg(long, default_value = "true")]
     check_ext: bool,
 }
@@ -43,6 +45,8 @@ enum Stage15Error {
     InferError(PathBuf),
     #[error("Failed to copy or move file {0} to {1}: {2}")]
     IOError(PathBuf, PathBuf, String),
+    #[error("Wrong ext file! {0:?}")]
+    WrongExtError(WrongExtFile),
 }
 
 type Stage15Result<T> = Result<T, Stage15Error>;
@@ -136,6 +140,9 @@ fn main() -> anyhow::Result<()> {
             }
             match &op {
                 Op::Copy => {
+                    if dst_path.exists() && !args.overwrite {
+                        return Ok(maybe_wrong_ext);
+                    }
                     fs::copy(&src_path, &dst_path).map_err(|e| {
                         Stage15Error::IOError(src_path.clone(), dst_path.clone(), e.to_string())
                     })?;

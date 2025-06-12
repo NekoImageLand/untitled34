@@ -1,6 +1,5 @@
 use clap::Parser;
 use plotters::prelude::*;
-use shared::structure::NekoPoint;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use uuid::Uuid;

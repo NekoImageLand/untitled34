@@ -6,8 +6,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use shared::cosine_sim::{Cosine, cosine_sim};
 use shared::structure::{
-    IMAGE_SIM_THRESHOLD, TEXT_SIM_THRESHOLD, TriageGif, TriageGifClip,
-    TriageGifGroupsClipStagePair, TriageGifGroupsClipStageReq, TriageGifGroupsClipStageRes,
+    IMAGE_SIM_THRESHOLD, TriageGif, TriageGifClip, TriageGifGroupsClipStagePair,
+    TriageGifGroupsClipStageReq, TriageGifGroupsClipStageRes,
 };
 use std::collections::HashMap;
 use std::fmt::Debug;

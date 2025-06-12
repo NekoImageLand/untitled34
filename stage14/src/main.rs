@@ -1,16 +1,15 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use petgraph::unionfind::UnionFind;
 use shared::cosine_sim::cosine_sim;
-use shared::point_explorer::PointExplorerBuilder;
+use shared::point_explorer::{PointExplorer, PointExplorerBuilder};
 use shared::structure::IMAGE_SIM_THRESHOLD;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 fn main() -> anyhow::Result<()> {
-    let file_path = "img_sim_clean_new.pkl";
-
-    println!("Loading data from '{}'...", file_path);
-    let pe = PointExplorerBuilder::new().data_path(file_path).build()?;
+    let pe: PointExplorer<f32, 768> = PointExplorerBuilder::new()
+        .path("qdrant_point_explorer_250611.pkl")
+        .build()?;
     let n = pe.len();
     if n == 0 {
         println!("No points found in the file. Exiting.");
@@ -50,7 +49,7 @@ fn main() -> anyhow::Result<()> {
     for i in 0..n {
         let root = uf.find_mut(i);
         let uuid = pe.index2uuid(i).expect("Index should be valid");
-        clusters.entry(root).or_default().insert(uuid);
+        clusters.entry(root).or_default().insert(*uuid);
     }
     let result_clusters: Vec<HashSet<Uuid>> = clusters.into_values().collect();
 

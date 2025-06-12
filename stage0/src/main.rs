@@ -3,11 +3,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 use mimalloc::MiMalloc;
 use qdrant_client::qdrant::vectors_output::VectorsOptions as VectorsOptionsOutput;
 use qdrant_client::qdrant::{PointId, ScrollPointsBuilder, point_id};
-use serde_pickle::SerOptions;
 use shared::point_explorer::{PointExplorer, PointExplorerBuilder};
 use shared::qdrant::{GenShinQdrantClient, QdrantResult};
 use std::env;
-use std::io::Write;
 use std::ops::Deref;
 use std::sync::Arc;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -130,11 +128,10 @@ async fn main() -> anyhow::Result<()> {
     let point_num = client.clone().fetch_point_num().await?;
     let points = client.clone().fetch_all_points(point_num as usize).await?;
     tracing::info!("Found {} points", points.len());
-    let mut point_explorer = PointExplorerBuilder::new().capacity(points.len()).build()?;
-    for (uuid, vector) in points {
-        point_explorer.insert(&uuid, &*vector);
-    }
-    tracing::info!("Loaded {} points into PointExplorer", point_explorer.len());
-    point_explorer.save("img_sim_clean_new.pkl")?;
+    let mut point_explorer: PointExplorer<f32, 768> =
+        PointExplorerBuilder::new().capacity(points.len()).build()?;
+    point_explorer.extend(points);
+    tracing::info!("Saving {} points into PointExplorer", point_explorer.len());
+    point_explorer.save("qdrant_point_explorer_250611.pkl")?; // TODO: with metadata?
     Ok(())
 }

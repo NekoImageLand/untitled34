@@ -13,13 +13,20 @@ pub mod structure;
 
 #[cfg(feature = "pyo3")]
 mod pyo3 {
+    use crate::point_explorer::pyo3::point_explorer;
+    use crate::structure::{NekoPoint, NekoPointText};
     use pyo3::prelude::*;
+
     #[pymodule]
-    fn shared(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    fn shared(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         #[cfg(feature = "point-explorer-pyo3")]
         {
-            m.add_class::<crate::point_explorer::pyo3::PyPointExplorer>()?;
+            let pe = PyModule::new(py, "point_explorer")?;
+            point_explorer(py, &pe)?;
+            m.add_submodule(&pe)?;
         }
+        m.add_class::<NekoPoint>()?;
+        m.add_class::<NekoPointText>()?;
         Ok(())
     }
 }

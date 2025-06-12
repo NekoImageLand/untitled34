@@ -24,9 +24,8 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let sim_explorer = PointExplorerBuilder::new()
-        .data_path(&args.sim_map)
-        .build()?;
+    let sim_explorer: PointExplorer<f32, 768> =
+        PointExplorerBuilder::new().path(&args.sim_map).build()?;
     if args.ids.len() < 2 {
         eprintln!("need at least two ids");
         return Ok(());
@@ -53,7 +52,7 @@ fn main() -> Result<()> {
         for j in i + 1..args.ids.len() {
             let id1 = args.ids[i];
             let id2 = args.ids[j];
-            let sim = sim_explorer.get_similarity((&id1, &id2))?;
+            let sim = sim_explorer.get_cosine_sim((&id1, &id2))?;
             let (x1, y1) = positions[&id1];
             let (x2, y2) = positions[&id2];
             let low = sim < args.threshold;

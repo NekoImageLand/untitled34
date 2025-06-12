@@ -1,0 +1,11 @@
+[project]
+name = "shared"
+version = "0.1.0"
+
+[build-system]
+requires = ["maturin>=0.13"]
+build-backend = "maturin"
+
+[tool.maturin]
+name = "shared"
+features = ["pyo3/extension-module"]

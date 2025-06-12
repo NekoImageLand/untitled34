@@ -1,0 +1,25 @@
+[package]
+name = "stage16"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = {path = "../shared", features = ["point-explorer"]}
+uuid.workspace = true
+indexmap.workspace = true
+mimalloc.workspace = true
+image.workspace = true
+image_hasher.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-pickle.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+indicatif.workspace = true
+walkdir.workspace = true
+thiserror.workspace = true
+rayon.workspace = true

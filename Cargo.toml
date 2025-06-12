@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["shared", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "stage6", "stage7", "stage8", "stage9", "stage10", "stage11", "stage12", "stage13", "stage14", "stage15"]
+members = ["shared", "stage0", "stage1", "stage2", "stage3", "stage4", "stage5", "stage6", "stage7", "stage8", "stage9", "stage10", "stage11", "stage12", "stage13", "stage14", "stage15", "stage16", "stage17", "stage18", "stage19"]
 
 [workspace.package]
 version = "0.1.0"
@@ -23,6 +23,7 @@ pacmap = "0.2.6"
 petal-clustering = "0.12.0"
 petal-neighbors = "0.13.0"
 ndarray = { version = "0.16.1", features = ["serde"] }
+hnsw_rs = { version = "0.3.2", features = ["stdsimd"] }
 qdrant-client = "1.14.0"
 tokio = { version = "1.45.1", features = ["rt", "rt-multi-thread", "macros"] }
 prost = "0.13.5"
@@ -33,9 +34,9 @@ infer = "0.19.0"
 walkdir = "2.5.0"
 anyhow = "1.0.98"
 thiserror = "2.0.12"
-clap = { version = "4.5.39", features = ["derive"] }
+clap = { version = "4.5.40", features = ["derive"] }
 tracing-appender = "0.2.3"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "tracing-log"] }
 tracing = "0.1.41"
 chrono = { version = "0.4.41", features = ["serde"] }
 bytes = "1.10.1"
@@ -44,15 +45,18 @@ rand = "0.9.1"
 rand_pcg = "0.9.0"
 half = { version = "2.6.0", features = ["serde"] }
 criterion = "0.6.0"
-image = { version = "0.25.6", features = ["rayon", "gif"] }
+image = { version = "0.25.6", features = ["rayon"] }
 image_hasher = "3.0.0"
 candle-core = { git = "https://github.com/NekoImageLand/candle", branch = "clip/baai" }
 candle-nn = { git = "https://github.com/NekoImageLand/candle", branch = "clip/baai" }
 candle-transformers = { git = "https://github.com/NekoImageLand/candle", branch = "clip/baai" }
 pyo3 = { version = "0.25.0", features = ["extension-module", "macros", "uuid"] }
+pyo3-stub-gen = { git = "https://github.com/NekoImageLand/pyo3-stub-gen", branch = "feat/uuid", features = ["uuid"] }
+pyo3-stub-gen-derive = "0.9.1"
 
 [patch.crates-io]
 intel-mkl-src = { git = "https://github.com/NekoImageLand/intel-mkl-src", branch = "fix/pkgbuild-with-debug" }
+petal-neighbors = { git = "https://github.com/NekoImageLand/petal-neighbors", branch = "feat/hamming" }
 
 [profile.release]
 opt-level = 3

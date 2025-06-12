@@ -36,6 +36,13 @@ impl Cosine for bf16 {
     }
 }
 
+impl Cosine for u8 {
+    #[inline]
+    fn cosine_sim(_: &[u8], _: &[u8]) -> f32 {
+        todo!()
+    }
+}
+
 #[inline]
 pub fn cosine_sim<T: Cosine>(a: &[T], b: &[T]) -> f32 {
     T::cosine_sim(a, b)

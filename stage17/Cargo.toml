@@ -1,0 +1,19 @@
+[package]
+name = "stage17"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared", features = ["point-explorer"] }
+mimalloc.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+indicatif.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+serde-pickle.workspace = true
+hnsw_rs.workspace = true
+serde.workspace = true
+rayon.workspace = true

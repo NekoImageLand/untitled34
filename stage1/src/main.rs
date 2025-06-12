@@ -6,13 +6,13 @@ use uuid::Uuid;
 
 const THRESHOLD: f32 = 0.985;
 
-fn cluster_chunk(ids: &[Uuid], sim_map: &PointExplorer) -> Vec<HashSet<Uuid>> {
+fn cluster_chunk(ids: &[Uuid], sim_map: &PointExplorer<f32, 768>) -> Vec<HashSet<Uuid>> {
     let mut clusters: Vec<HashSet<Uuid>> = Vec::new(); // a b c d e
     for &id in ids {
         let mut placed = false;
         for cl in clusters.iter_mut() {
             let ok = cl.iter().all(|&other| {
-                let sim = sim_map.get_similarity((&id, &other)).unwrap();
+                let sim = sim_map.get_cosine_sim((&id, &other)).unwrap();
                 sim > THRESHOLD
             });
             if ok {
@@ -30,11 +30,15 @@ fn cluster_chunk(ids: &[Uuid], sim_map: &PointExplorer) -> Vec<HashSet<Uuid>> {
     clusters
 }
 
-fn merge_cluster(local: HashSet<Uuid>, global: &mut Vec<HashSet<Uuid>>, sim_map: &PointExplorer) {
+fn merge_cluster(
+    local: HashSet<Uuid>,
+    global: &mut Vec<HashSet<Uuid>>,
+    sim_map: &PointExplorer<f32, 768>,
+) {
     for g in global.iter_mut() {
         let ok = local.iter().all(|&i| {
             g.iter().all(|&j| {
-                let sim = sim_map.get_similarity((&i, &j)).unwrap();
+                let sim = sim_map.get_cosine_sim((&i, &j)).unwrap();
                 sim > THRESHOLD
             })
         });
@@ -48,8 +52,8 @@ fn merge_cluster(local: HashSet<Uuid>, global: &mut Vec<HashSet<Uuid>>, sim_map:
 
 pub fn main() {
     let data = std::fs::read(r"img_sim_clean_new.bin").unwrap();
-    // TODO:
-    let sim_explorer: PointExplorer =
+    // FIXME: it won't work
+    let sim_explorer: PointExplorer<f32, 768> =
         bincode::serde::decode_from_slice(&data, bincode::config::standard())
             .expect("deserialize")
             .0;

@@ -22,8 +22,8 @@ fn main() -> anyhow::Result<()> {
         .with(stdout)
         .with(file)
         .init();
-    let points = PointExplorerBuilder::new()
-        .data_path("img_sim_clean_new.pkl")
+    let points: PointExplorer<f32, 768> = PointExplorerBuilder::new()
+        .path("qdrant_point_explorer_250611.pkl")
         .build()?;
     let n = points.len();
     let mut points_vec = Vec::with_capacity(n * 768);

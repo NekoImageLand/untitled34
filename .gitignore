@@ -9,3 +9,5 @@ nekoimg_*/
 *.json
 *.exe
 *.png
+*.hnsw.*
+*.pyi

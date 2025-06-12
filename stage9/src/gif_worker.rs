@@ -11,7 +11,6 @@ use shared::structure::{
     TriageGifGroupsGifStageRes, TriageGifPair,
 };
 use std::collections::HashSet;
-use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use uuid::Uuid;
