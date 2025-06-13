@@ -9,6 +9,7 @@ uuid.workspace = true
 chrono.workspace = true
 sha1 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
 bincode = { workspace = true, optional = true }
 serde-pickle = { workspace = true, optional = true }
@@ -47,7 +48,7 @@ cosine-sim = ["half"]
 opendal-data-compat = []
 opendal-ext = ["opendal", "anyhow"]
 qdrant-ext = ["qdrant-client", "anyhow"]
-point-explorer = ["cosine-sim", "thiserror", "serde_with", "serde-pickle", "bincode", "indexmap"]
+point-explorer = ["cosine-sim", "url", "thiserror", "serde_with", "serde-pickle", "bincode", "indexmap"]
 shared-pyo3 = ["pyo3", "pyo3-stub-gen", "pyo3-stub-gen-derive"]
 point-explorer-pyo3 = ["shared-pyo3", "point-explorer"]
 hnsw = ["hnsw_rs", "point-explorer", "rayon"]
