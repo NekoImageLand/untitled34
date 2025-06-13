@@ -1,5 +1,7 @@
 #[cfg(feature = "cosine-sim")]
 pub mod cosine_sim;
+#[cfg(feature = "hnsw")]
+pub mod hnsw;
 #[cfg(feature = "neko-uuid")]
 pub mod neko_uuid;
 #[cfg(any(feature = "opendal-data-compat", feature = "opendal-ext"))]
@@ -13,17 +15,20 @@ pub mod structure;
 
 #[cfg(feature = "pyo3")]
 mod pyo3 {
-    use crate::point_explorer::pyo3::point_explorer;
     use crate::structure::{NekoPoint, NekoPointText};
     use pyo3::prelude::*;
 
     #[pymodule]
-    fn shared(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    fn shared(_: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         #[cfg(feature = "point-explorer-pyo3")]
         {
-            let pe = PyModule::new(py, "point_explorer")?;
-            point_explorer(py, &pe)?;
-            m.add_submodule(&pe)?;
+            m.add_wrapped(pyo3::wrap_pymodule!(
+                crate::point_explorer::pyo3::point_explorer
+            ))?;
+        }
+        #[cfg(feature = "hnsw-pyo3")]
+        {
+            m.add_wrapped(pyo3::wrap_pymodule!(crate::hnsw::pyo3::hnsw))?;
         }
         m.add_class::<NekoPoint>()?;
         m.add_class::<NekoPointText>()?;

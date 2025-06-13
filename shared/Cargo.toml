@@ -23,6 +23,8 @@ pyo3-stub-gen = { workspace = true, optional = true }
 pyo3-stub-gen-derive = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+hnsw_rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand.workspace = true
@@ -48,3 +50,5 @@ qdrant-ext = ["qdrant-client", "anyhow"]
 point-explorer = ["cosine-sim", "thiserror", "serde_with", "serde-pickle", "bincode", "indexmap"]
 shared-pyo3 = ["pyo3", "pyo3-stub-gen", "pyo3-stub-gen-derive"]
 point-explorer-pyo3 = ["shared-pyo3", "point-explorer"]
+hnsw = ["hnsw_rs", "point-explorer", "rayon"]
+hnsw-pyo3 = ["shared-pyo3", "hnsw"]

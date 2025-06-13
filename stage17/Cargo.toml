@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-shared = { path = "../shared", features = ["point-explorer"] }
+shared = { path = "../shared", features = ["point-explorer", "hnsw"] }
 mimalloc.workspace = true
 uuid.workspace = true
 tracing.workspace = true
