@@ -42,7 +42,7 @@ fn hnsw_query(
         let neighbors = hnsw.search(&query_vec, 200, 500);
         for n in neighbors {
             let id = point_explorer.index2uuid(n.d_id).unwrap();
-            let uri = point_explorer.get_point_uri(id).unwrap_or_default();
+            let uri = point_explorer.get_point_uri("url", id).unwrap_or_default();
             let res = SearchResult {
                 uri,
                 distance: n.distance,
@@ -78,6 +78,39 @@ fn query(
     Ok(())
 }
 
+fn knn(hnsw: &Hnsw<u8, DistHamming>, point_explorer: &PointExplorer<u8, 32>) -> anyhow::Result<()> {
+    let all_ids: Vec<&Uuid> = point_explorer.iter().map(|(id, _)| id).collect();
+    let pb = ProgressBar::new(all_ids.len() as u64);
+    let style = ProgressStyle::default_bar()
+        .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")?;
+    pb.set_style(style);
+    pb.set_message("Working...");
+    let points_knn_set = all_ids
+        .into_par_iter()
+        .flat_map(|id| {
+            pb.inc(1);
+            let id_index = point_explorer.uuid2index(id).expect("point not found");
+            let vec = point_explorer.get_vector(id).expect("point not found");
+            let neighbors = hnsw.search(vec, 200, 500);
+            neighbors
+                .iter()
+                .filter(|n| n.distance <= 0.625 && n.d_id != id_index) // filter by distance threshold
+                .map(|n| point_explorer.index2uuid(n.d_id).unwrap())
+                .collect::<Vec<_>>()
+        })
+        .collect::<HashSet<&Uuid>>();
+    pb.finish_with_message("KNN search completed");
+    tracing::info!("Found {} unique points in KNN search", points_knn_set.len());
+    // save knn set
+    let knn_set_path = PathBuf::from(format!(
+        "stage17_knn_set_{}.pkl",
+        chrono::Utc::now().timestamp()
+    ));
+    let knn_set_data = serde_pickle::to_vec(&points_knn_set, serde_pickle::SerOptions::default())?;
+    std::fs::write(knn_set_path, knn_set_data)?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let stdout = tracing_subscriber::fmt::layer().with_filter(EnvFilter::new(
         env::var("STDOUT_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
@@ -96,13 +129,12 @@ fn main() -> anyhow::Result<()> {
     let point_explorer: PointExplorer<u8, 32> = PointExplorerBuilder::new()
         .path(env::var("STAGE17_POINT_MAP")?)
         .metadata_ext_path(env::var("STAGE17_POINT_EXT")?)
-        .point_url_prefix(env::var("STAGE17_POINT_URL_PREFIX")?)
+        .point_url_prefix("url", &env::var("STAGE17_POINT_URL_PREFIX")?)
         .build()?;
     let all_vecs: Vec<Vec<u8>> = point_explorer
         .iter()
         .map(|(_id, arr)| arr.to_vec())
         .collect();
-    let all_ids: Vec<&Uuid> = point_explorer.iter().map(|(id, _arr)| id).collect();
     let data: Vec<(&Vec<u8>, usize)> = all_vecs
         .iter()
         .enumerate()
@@ -134,34 +166,6 @@ fn main() -> anyhow::Result<()> {
     // debug
     hnsw.dump_layer_info();
     hnsw.set_searching_mode(true);
-    let pb = ProgressBar::new(all_ids.len() as u64);
-    let style = ProgressStyle::default_bar()
-        .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")?;
-    pb.set_style(style);
-    pb.set_message("Working...");
-    let points_knn_set = all_ids
-        .into_par_iter()
-        .flat_map(|id| {
-            pb.inc(1);
-            let id_index = point_explorer.uuid2index(id).expect("point not found");
-            let vec = point_explorer.get_vector(id).expect("point not found");
-            let neighbors = hnsw.search(vec, 200, 500);
-            neighbors
-                .iter()
-                .filter(|n| n.distance <= 0.625 && n.d_id != id_index) // filter by distance threshold
-                .map(|n| point_explorer.index2uuid(n.d_id).unwrap())
-                .collect::<Vec<_>>()
-        })
-        .collect::<HashSet<&Uuid>>();
-    pb.finish_with_message("KNN search completed");
-    tracing::info!("Found {} unique points in KNN search", points_knn_set.len());
-    // save knn set
-    let knn_set_path = PathBuf::from(format!(
-        "stage17_knn_set_{}.pkl",
-        chrono::Utc::now().timestamp()
-    ));
-    let knn_set_data = serde_pickle::to_vec(&points_knn_set, serde_pickle::SerOptions::default())?;
-    std::fs::write(knn_set_path, knn_set_data)?;
     // save hnsw
     if !hnsw_exists {
         tracing::info!("Saving HNSW index to {}", hnsw_base);

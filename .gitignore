@@ -4,6 +4,7 @@ backup*/
 .vscode/
 logs/
 nekoimg_*/
+shared/shared/*
 *.pkl
 *.bin
 *.json

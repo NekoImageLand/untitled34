@@ -8,6 +8,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::fs;
+use std::hash::Hash;
 use std::path::PathBuf;
 use url::Url;
 use uuid::Uuid;
@@ -35,7 +36,7 @@ pub struct PointExplorerBuilder {
     point_explorer_path: Option<String>,
     metadata_path: Option<String>,
     metadata_ext_path: Option<String>,
-    point_uri_prefix: Option<String>,
+    point_uri_prefix_map: Option<HashMap<String, String>>,
 }
 
 impl PointExplorerBuilder {
@@ -45,7 +46,7 @@ impl PointExplorerBuilder {
             point_explorer_path: None,
             metadata_path: None,
             metadata_ext_path: None,
-            point_uri_prefix: None,
+            point_uri_prefix_map: None,
         }
     }
 
@@ -69,8 +70,18 @@ impl PointExplorerBuilder {
         self
     }
 
-    pub fn point_url_prefix<P: Into<String>>(mut self, prefix: P) -> Self {
-        self.point_uri_prefix = Some(prefix.into());
+    pub fn point_url_prefix<P: Into<String>>(mut self, key: P, prefix: P) -> Self {
+        self.point_uri_prefix_map = match self.point_uri_prefix_map {
+            Some(mut map) => {
+                map.insert(key.into(), prefix.into());
+                Some(map)
+            }
+            None => {
+                let mut map = HashMap::new();
+                map.insert(key.into(), prefix.into());
+                Some(map)
+            }
+        };
         self
     }
 
@@ -95,19 +106,20 @@ impl PointExplorerBuilder {
         if let Some(ext_path) = self.metadata_ext_path {
             explorer.load_metadata_ext(&ext_path)?;
         }
-        if let Some(prefix) = self.point_uri_prefix {
+        if let Some(prefix) = self.point_uri_prefix_map {
             explorer.load_points_uri_prefix(&prefix);
         }
         Ok(explorer)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 enum PointUri {
     Path(PathBuf),
     Url(Url),
 }
 
+#[allow(dead_code)]
 #[serde_as]
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(bound(serialize = "T: Serialize", deserialize = "T: DeserializeOwned",))]
@@ -119,12 +131,18 @@ where
 {
     #[serde_as(as = "IndexMap<_, [_; D]>")]
     point_vector_map: IndexMap<Uuid, [T; D]>,
+    /// Deprecated
+    #[serde(skip)]
     point_uri_prefix: Option<PointUri>,
+    #[serde(default)]
+    point_uri_prefix_map: Option<HashMap<String, PointUri>>,
     #[serde(skip)]
     point_metadata: Option<HashMap<Uuid, NekoPoint>>,
+    #[serde(default)]
     point_metadata_path: Option<PathBuf>,
     #[serde(skip)]
     point_metadata_ext: Option<HashMap<Uuid, NekoPointExt>>,
+    #[serde(default)]
     point_metadata_ext_path: Option<PathBuf>,
 }
 
@@ -136,7 +154,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[inline]
-        fn display_hashmap<V>(path: &Option<PathBuf>, map: &Option<HashMap<Uuid, V>>) -> String {
+        fn display_hashmap<K, V>(path: &Option<PathBuf>, map: &Option<HashMap<K, V>>) -> String {
             format!(
                 "path = {:?}, inner = {}",
                 path,
@@ -161,7 +179,7 @@ where
                 "point_metadata_ext",
                 &display_hashmap(&self.point_metadata_ext_path, &self.point_metadata_ext),
             )
-            .field("point_uri_prefix", &self.point_uri_prefix)
+            .field("point_uri_prefix_map", &self.point_uri_prefix_map)
             .finish()
     }
 }
@@ -184,6 +202,7 @@ where
             point_metadata_ext: None,
             point_metadata_ext_path: None,
             point_uri_prefix: None,
+            point_uri_prefix_map: None,
         }
     }
 
@@ -219,11 +238,21 @@ where
         Ok(())
     }
 
-    pub fn load_points_uri_prefix(&mut self, prefix: &str) {
-        match Url::parse(prefix) {
-            Ok(url) if !url.cannot_be_a_base() => self.point_uri_prefix = Some(PointUri::Url(url)),
-            _ => self.point_uri_prefix = Some(PointUri::Path(PathBuf::from(prefix))),
-        }
+    pub fn load_points_uri_prefix(&mut self, prefix: &HashMap<String, String>) {
+        self.point_uri_prefix_map = Some(
+            prefix
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.to_owned(),
+                        match Url::parse(v) {
+                            Ok(url) if !url.cannot_be_a_base() => PointUri::Url(url),
+                            _ => PointUri::Path(PathBuf::from(v)),
+                        },
+                    )
+                })
+                .collect(),
+        );
     }
 
     pub fn save(&self, path: &str) -> PointExplorerResult<()> {
@@ -315,8 +344,8 @@ where
         self.point_metadata.as_ref()?.get(point_id)
     }
 
-    pub fn get_point_uri(&self, point_id: &Uuid) -> Option<String> {
-        let prefix = self.point_uri_prefix.as_ref()?;
+    pub fn get_point_uri(&self, pm_prefix: &str, point_id: &Uuid) -> Option<String> {
+        let prefix = self.point_uri_prefix_map.as_ref()?.get(pm_prefix)?;
         let point = self.point_metadata_ext.as_ref()?.get(point_id)?;
         let filename = format!("{}.{}", point_id, point.ext());
         match prefix {
@@ -426,46 +455,30 @@ pub mod pyo3 {
 
         pub fn point_uri_prefix<'a>(
             mut slf: PyRefMut<'a, Self>,
+            key: String,
             prefix: String,
         ) -> PyResult<PyRefMut<'a, Self>> {
-            slf.builder = slf.builder.clone().point_url_prefix(prefix);
+            slf.builder = slf.builder.clone().point_url_prefix(key, prefix);
             Ok(slf)
         }
 
-        // TODO: use enum
-        pub fn build_f32(&self) -> PyResult<PyPointExplorerF32> {
-            let explorer = self
-                .builder
-                .clone()
-                .build::<f32, 768>()
-                .map_err(PyErr::from)?;
-            Ok(PyPointExplorerF32 { inner: explorer })
+        pub fn build_f32d768(&self) -> PyResult<PyPointExplorerF32D768> {
+            let explorer = self.builder.clone().build::<f32, 768>()?;
+            Ok(PyPointExplorerF32D768 { inner: explorer })
         }
 
-        pub fn build_u8(&self) -> PyResult<PyPointExplorerU8> {
-            let explorer = self
-                .builder
-                .clone()
-                .build::<u8, 32>()
-                .map_err(PyErr::from)?;
-            Ok(PyPointExplorerU8 { inner: explorer })
+        pub fn build_u8d32(&self) -> PyResult<PyPointExplorerU8D32> {
+            let explorer = self.builder.clone().build::<u8, 32>()?;
+            Ok(PyPointExplorerU8D32 { inner: explorer })
+        }
+
+        pub fn build_u8d128(&self) -> PyResult<PyPointExplorerU8D128> {
+            let explorer = self.builder.clone().build::<u8, 128>()?;
+            Ok(PyPointExplorerU8D128 { inner: explorer })
         }
     }
 
-    #[allow(dead_code)]
-    enum PyPointExplorerInner {
-        F32(PointExplorer<f32, 768>),
-        U8(PointExplorer<u8, 32>),
-    }
-
-    #[allow(dead_code)]
-    #[gen_stub_pyclass]
-    #[pyclass(module = "shared.point_explorer")]
-    pub struct PyPointExplorer {
-        inner: PyPointExplorerInner,
-    }
-
-    macro_rules! impl_py_point_explorer {
+    macro_rules! py_point_explorer_impl {
         ($name:ident, $scalar:ty, $dim:expr) => {
             #[gen_stub_pyclass]
             #[pyclass(module = "shared.point_explorer")]
@@ -583,17 +596,22 @@ pub mod pyo3 {
                     Ok(self.inner.get_point_metadata(&uuid).cloned())
                 }
 
-                pub fn get_point_uri(&self, point_id: &str) -> PyResult<Option<String>> {
+                pub fn get_point_uri(
+                    &self,
+                    pm_key: &str,
+                    point_id: &str,
+                ) -> PyResult<Option<String>> {
                     let uuid = uuid::Uuid::parse_str(point_id)
                         .map_err(|e| PyValueError::new_err(format!("Invalid UUID: {e}")))?;
-                    Ok(self.inner.get_point_uri(&uuid))
+                    Ok(self.inner.get_point_uri(pm_key, &uuid))
                 }
             }
         };
     }
 
-    impl_py_point_explorer!(PyPointExplorerF32, f32, 768);
-    impl_py_point_explorer!(PyPointExplorerU8, u8, 32);
+    py_point_explorer_impl!(PyPointExplorerF32D768, f32, 768);
+    py_point_explorer_impl!(PyPointExplorerU8D32, u8, 32);
+    py_point_explorer_impl!(PyPointExplorerU8D128, u8, 128);
 
     #[gen_stub_pyclass]
     #[pyclass(module = "shared.point_explorer")]
@@ -620,11 +638,11 @@ pub mod pyo3 {
         }
     }
 
-    #[pymodule]
     pub fn point_explorer(_: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyPointExplorerBuilder>()?;
-        m.add_class::<PyPointExplorerF32>()?;
-        m.add_class::<PyPointExplorerU8>()?;
+        m.add_class::<PyPointExplorerF32D768>()?;
+        m.add_class::<PyPointExplorerU8D32>()?;
+        m.add_class::<PyPointExplorerU8D128>()?;
         m.add_class::<PyPointExplorerIterator>()?;
         Ok(())
     }
@@ -759,28 +777,22 @@ mod tests {
         // FIXME: currently, c:/xxx will be parsed as URL
         let windows_path = "C:\\path\\to\\resources\\";
         let pe = PointExplorerBuilder::new()
-            .point_url_prefix(url)
+            .point_url_prefix("url", url)
+            .point_url_prefix("unix", unix_path)
+            .point_url_prefix("windows", windows_path)
             .build::<u8, 32>()
             .unwrap();
         assert_eq!(
-            pe.point_uri_prefix,
-            Some(PointUri::Url(Url::parse(url).unwrap()))
+            pe.point_uri_prefix_map.as_ref().unwrap().get("url"),
+            Some(&PointUri::Url(Url::parse(url).unwrap()))
         );
-        let pe = PointExplorerBuilder::new()
-            .point_url_prefix(unix_path)
-            .build::<u8, 32>()
-            .unwrap();
         assert_eq!(
-            pe.point_uri_prefix,
-            Some(PointUri::Path(PathBuf::from(unix_path)))
+            pe.point_uri_prefix_map.as_ref().unwrap().get("unix"),
+            Some(&PointUri::Path(PathBuf::from(unix_path)))
         );
-        let pe = PointExplorerBuilder::new()
-            .point_url_prefix(windows_path)
-            .build::<u8, 32>()
-            .unwrap();
         assert_eq!(
-            pe.point_uri_prefix,
-            Some(PointUri::Path(PathBuf::from(windows_path)))
+            pe.point_uri_prefix_map.as_ref().unwrap().get("windows"),
+            Some(&PointUri::Path(PathBuf::from(windows_path)))
         );
     }
 }

@@ -26,6 +26,7 @@ tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 hnsw_rs = { workspace = true, optional = true }
+paste = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand.workspace = true
@@ -50,6 +51,6 @@ opendal-ext = ["opendal", "anyhow"]
 qdrant-ext = ["qdrant-client", "anyhow"]
 point-explorer = ["cosine-sim", "url", "thiserror", "serde_with", "serde-pickle", "bincode", "indexmap"]
 shared-pyo3 = ["pyo3", "pyo3-stub-gen", "pyo3-stub-gen-derive"]
-point-explorer-pyo3 = ["shared-pyo3", "point-explorer"]
+point-explorer-pyo3 = ["shared-pyo3", "point-explorer", "paste"]
 hnsw = ["hnsw_rs", "point-explorer", "rayon"]
 hnsw-pyo3 = ["shared-pyo3", "hnsw"]

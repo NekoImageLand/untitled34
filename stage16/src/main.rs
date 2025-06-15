@@ -61,8 +61,9 @@ fn main() -> anyhow::Result<()> {
         .map(|e| e.into_path())
         .collect();
     let hasher = HasherConfig::new()
-        .hash_alg(image_hasher::HashAlg::Gradient)
+        .hash_alg(image_hasher::HashAlg::Median)
         .resize_filter(FilterType::Lanczos3)
+        .preproc_dct()
         .hash_size(16, 16)
         .to_hasher();
     let pb = ProgressBar::new(all_files.len() as u64);

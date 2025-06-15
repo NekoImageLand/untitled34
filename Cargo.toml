@@ -54,6 +54,8 @@ candle-transformers = { git = "https://github.com/NekoImageLand/candle", branch 
 pyo3 = { version = "0.25.1", features = ["extension-module", "macros", "uuid"] }
 pyo3-stub-gen = { git = "https://github.com/NekoImageLand/pyo3-stub-gen", branch = "feat/uuid", features = ["uuid"] }
 pyo3-stub-gen-derive = "0.9.1"
+paste = "1.0.15"
+float-derive = "0.1.0"
 
 [patch.crates-io]
 intel-mkl-src = { git = "https://github.com/NekoImageLand/intel-mkl-src", branch = "fix/pkgbuild-with-debug" }

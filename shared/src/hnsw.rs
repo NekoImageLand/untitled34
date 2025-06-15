@@ -8,6 +8,7 @@ use std::sync::atomic::AtomicBool;
 #[cfg(feature = "pyo3")]
 use {
     ::pyo3::prelude::*,
+    ::pyo3::types::PyType,
     pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods},
 };
 
@@ -22,14 +23,22 @@ pub struct HnswSearchResult {
     distance: f32,
 }
 
+#[cfg(feature = "hnsw-pyo3")]
 #[cfg_attr(feature = "pyo3", gen_stub_pymethods, pymethods)]
 impl HnswSearchResult {
+    #[new]
+    fn py_new(point_id: usize, distance: f32) -> Self {
+        HnswSearchResult { point_id, distance }
+    }
+
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!("{:?}", self))
     }
 
-    fn __str__(&self) -> PyResult<String> {
-        Ok(format!("{:?}", self))
+    // TODO: don't use `__reduce__` cuz it has poor performance
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<(Py<PyType>, (usize, f32))> {
+        let cls = py.get_type::<HnswSearchResult>();
+        Ok((cls.into(), (self.point_id, self.distance)))
     }
 }
 
@@ -157,8 +166,10 @@ where
 #[cfg(feature = "hnsw-pyo3")]
 pub mod pyo3 {
     use crate::hnsw::{HnswIndex, HnswSearchResult, HnswStorage};
-    use hnsw_rs::prelude::DistHamming;
+    use hnsw_rs::prelude::*;
     use pyo3::prelude::*;
+    use pyo3::py_run;
+    use pyo3::types::PyList;
     use pyo3_stub_gen::define_stub_info_gatherer;
     use pyo3_stub_gen_derive::*;
 
@@ -245,15 +256,57 @@ pub mod pyo3 {
         };
     }
 
+    define_py_hnsw!(HnswStorageF32Cosine, HnswIndexF32Cosine, f32, DistCosine);
     define_py_hnsw!(HnswStorageU8Hamming, HnswIndexU8Hamming, u8, DistHamming);
 
-    #[pymodule]
     pub fn hnsw(_: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<HnswStorageU8Hamming>()?;
         m.add_class::<HnswIndexU8Hamming>()?;
+        m.add_class::<HnswStorageF32Cosine>()?;
+        m.add_class::<HnswIndexF32Cosine>()?;
         m.add_class::<HnswSearchResult>()?;
         Ok(())
     }
 
     define_stub_info_gatherer!(stub_info);
+
+    mod test {
+        use super::*;
+        use pyo3::types::{PyDict, PyList};
+
+        #[test]
+        fn test_pickle_hnsw_search_result() {
+            pyo3::prepare_freethreaded_python();
+
+            Python::with_gil(|py| {
+                let hnsw_mod = PyModule::new(py, "shared.hnsw").unwrap();
+                hnsw_mod.add_class::<HnswSearchResult>().unwrap();
+                let shared_mod = PyModule::new(py, "shared").unwrap();
+                shared_mod.add_submodule(&hnsw_mod).unwrap();
+                shared_mod.setattr("__path__", PyList::empty(py)).unwrap();
+
+                let sys = py.import("sys").unwrap();
+                let modules_any = sys.getattr("modules").unwrap();
+                let sys_modules = modules_any.downcast::<PyDict>().unwrap();
+                sys_modules.set_item("shared", shared_mod).unwrap();
+                sys_modules
+                    .set_item("shared.hnsw", py.import("shared.hnsw").unwrap_or(hnsw_mod))
+                    .unwrap();
+
+                let pickle = py.import("pickle").unwrap();
+                let cls = py
+                    .import("shared.hnsw")
+                    .unwrap()
+                    .getattr("HnswSearchResult")
+                    .unwrap();
+                let instance = cls.call1((123usize, 4.56f32)).unwrap();
+                let data = pickle.getattr("dumps").unwrap().call1((instance,)).unwrap();
+                let loaded = pickle.getattr("loads").unwrap().call1((data,)).unwrap();
+                let pid: usize = loaded.getattr("point_id").unwrap().extract().unwrap();
+                let dist: f32 = loaded.getattr("distance").unwrap().extract().unwrap();
+                assert_eq!(pid, 123);
+                assert!((dist - 4.56).abs() < 1e-6);
+            });
+        }
+    }
 }

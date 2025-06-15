@@ -17,19 +17,37 @@ pub mod structure;
 mod pyo3 {
     use crate::structure::{NekoPoint, NekoPointText};
     use pyo3::prelude::*;
+    use pyo3::py_run;
+
+    macro_rules! add_submodule {
+        ($py:expr, $m:expr, $name:literal, $func:path) => {
+            let submodule = PyModule::new($py, $name)?;
+            py_run!(
+                $py,
+                submodule,
+                concat!(
+                    "import sys\n",
+                    "sys.modules['shared.",
+                    $name,
+                    "'] = submodule"
+                )
+            );
+            $func($py, &submodule)?;
+            $m.add_submodule(&submodule)?;
+        };
+    }
 
     #[pymodule]
-    fn shared(_: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    fn shared(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
         #[cfg(feature = "point-explorer-pyo3")]
-        {
-            m.add_wrapped(pyo3::wrap_pymodule!(
-                crate::point_explorer::pyo3::point_explorer
-            ))?;
-        }
+        add_submodule!(
+            py,
+            m,
+            "point_explorer",
+            crate::point_explorer::pyo3::point_explorer
+        );
         #[cfg(feature = "hnsw-pyo3")]
-        {
-            m.add_wrapped(pyo3::wrap_pymodule!(crate::hnsw::pyo3::hnsw))?;
-        }
+        add_submodule!(py, m, "hnsw", crate::hnsw::pyo3::hnsw);
         m.add_class::<NekoPoint>()?;
         m.add_class::<NekoPointText>()?;
         Ok(())
