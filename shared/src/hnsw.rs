@@ -14,7 +14,7 @@ use {
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(
-    feature = "pyo3",
+    feature = "hnsw-pyo3",
     gen_stub_pyclass,
     pyclass(module = "shared.hnsw", get_all)
 )]
@@ -23,8 +23,7 @@ pub struct HnswSearchResult {
     distance: f32,
 }
 
-#[cfg(feature = "hnsw-pyo3")]
-#[cfg_attr(feature = "pyo3", gen_stub_pymethods, pymethods)]
+#[cfg_attr(feature = "hnsw-pyo3", gen_stub_pymethods, pymethods)]
 impl HnswSearchResult {
     #[new]
     fn py_new(point_id: usize, distance: f32) -> Self {
